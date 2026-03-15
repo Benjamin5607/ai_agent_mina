@@ -2,12 +2,13 @@ import streamlit as st
 import json
 import os
 import time
+import google.generativeai as genai # 📌 요약(장기기억) 생성을 위한 제미나이 호출용
 from api_setup import get_secrets, get_groq_models, get_gemini_models
 from discord_bot import report_to_discord
 from agent import LobsterAgent
 
 st.set_page_config(page_title="랍스타 컨트롤 센터", page_icon="🦞", layout="wide")
-st.title("🦞 Lobster Chat Center (아포칼립스 방어 군단)")
+st.title("🦞 Lobster Chat Center (아포칼립스 군단)")
 
 # ==========================================
 # 1. 환경 세팅 및 비밀열쇠 로드
@@ -77,17 +78,18 @@ if "agent_roster" not in st.session_state:
         default_agent = LobsterAgent(
             groq_key=secrets["GROQ"], gemini_key=secrets["GEMINI"], name="랍스타-01", role="만능 비서"
         )
-        default_agent.model_groq = "llama-3.3-70b-versatile"
-        default_agent.model_gemini = "models/gemini-1.5-flash"
-        default_agent.tools = ["🌐 Web Crawler (웹 검색 및 정보 스크래핑)"]
         saved_roster["랍스타-01 (만능 비서)"] = default_agent
         save_roster(saved_roster)
     st.session_state.agent_roster = saved_roster
 
 # ==========================================
-# 3. 사이드바 (채용소 및 무기고)
+# 3. 사이드바 (언어 설정 및 인력소)
 # ==========================================
 with st.sidebar:
+    st.header("🌐 공용어 설정 (Language)")
+    app_lang = st.radio("군단 전체 사용 언어", ["한국어", "English"], horizontal=True)
+    st.divider()
+    
     st.header("🦞 군단 인력소")
     groq_models = get_groq_models(secrets["GROQ"])
     gemini_models = get_gemini_models(secrets["GEMINI"])
@@ -95,12 +97,8 @@ with st.sidebar:
     with st.expander("➕ 새 에이전트 채용 (무기 지급)"):
         new_name = st.text_input("이름 (예: 제이콥)")
         new_role = st.text_input("직무 (예: 프로젝트 매니저)")
-        st.divider()
         sel_groq = st.selectbox("🧠 사고력 뇌 (Groq)", groq_models)
-        st.info(get_model_desc(sel_groq))
         sel_gemini = st.selectbox("👐 실무용 손발 (Gemini)", gemini_models)
-        st.info(get_model_desc(sel_gemini))
-        st.divider()
         selected_tools = st.multiselect("툴 장착", AVAILABLE_TOOLS)
         
         if st.button("채용 및 명부 등록 🚀"):
@@ -115,10 +113,8 @@ with st.sidebar:
                 dict_key = f"{new_name} ({new_role})"
                 st.session_state.agent_roster[dict_key] = new_agent
                 save_roster(st.session_state.agent_roster)
-                st.success(f"🎉 '{new_name}' 채용 및 저장 완료!")
+                st.success(f"🎉 '{new_name}' 채용 완료!")
                 st.rerun()
-            else:
-                st.warning("이름과 직무를 모두 입력해주세요!")
 
 # ==========================================
 # 4. 메인 화면: 탭 분리
@@ -139,19 +135,11 @@ with tab1:
             if st.button("🗑️ 해고하기", use_container_width=True):
                 del st.session_state.agent_roster[selected_agent_key]
                 save_roster(st.session_state.agent_roster)
-                st.success("해고 처리되었습니다.")
                 st.rerun()
-        else:
-            st.button("🗑️ 해고 불가", disabled=True, use_container_width=True)
 
-    st.caption(f"🤖 **스펙** | 🧠 뇌: `{active_lobster.model_groq}` / 👐 손발: `{active_lobster.model_gemini}`")
     tools_str = ", ".join(active_lobster.tools) if hasattr(active_lobster, 'tools') and active_lobster.tools else "맨손 (툴 없음)"
-    st.caption(f"🛠️ **장착 무기** | {tools_str}")
-
     uploaded_file = st.file_uploader(f"📁 {active_lobster.name}에게 데이터 전달", type=['txt', 'csv', 'md'], key="1on1_file")
-    file_data = ""
-    if uploaded_file:
-        file_data = uploaded_file.getvalue().decode("utf-8")
+    file_data = uploaded_file.getvalue().decode("utf-8") if uploaded_file else ""
 
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "명령을 내려주세요! 🦞"}]
@@ -167,41 +155,34 @@ with tab1:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner(f"{active_lobster.name}가 뇌({active_lobster.model_groq})와 무기를 굴리는 중... 🧠"):
-                history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
-                system_injection = f"\n[현재 장착 중인 API 툴: {tools_str}]\n너는 이 툴들을 사용하여 업무를 자동화할 수 있는 권한이 있다. 계획을 세울 때 네가 가진 툴을 적극적으로 활용해서 세워라."
+            with st.spinner(f"{active_lobster.name}가 뇌를 굴리는 중... 🧠"):
+                history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]]
+                system_injection = f"\n[현재 장착 API 툴: {tools_str}]\n[필수 명령] 너의 모든 대답은 무조건 '{app_lang}'로만 작성해라."
                 
                 try:
                     action_type, text1, text2 = active_lobster.think_and_act(
                         full_prompt + system_injection, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini
                     )
-                    if action_type == "chat":
-                        st.markdown(text1)
-                        report_to_discord(secrets["DISCORD"], f"💬 {active_lobster.name}의 대답", text1, 3447003)
-                        final_memory = text1
-                    elif action_type == "task":
-                        st.markdown(f"**[계획 수립 및 툴 활용]**\n{text1}")
-                        report_to_discord(secrets["DISCORD"], f"🧠 {active_lobster.name} 기획", text1, 15105570)
-                        report_to_discord(secrets["DISCORD"], f"✅ {active_lobster.name} 결과", text2[:4000], 3066993)
+                    st.markdown(text1)
+                    if action_type == "task":
                         st.success("✅ 실무 작업 완료! 디스코드 확인.")
-                        final_memory = f"업무 지시 완료.\n\n**[계획]**\n{text1}"
+                    final_memory = text1
                 except Exception as e:
                     st.error(f"오류: {e}")
                     final_memory = "오류 발생."
             st.session_state.messages.append({"role": "assistant", "content": final_memory})
 
 # ------------------------------------------
-# [탭 2] 🔥 원탁 회의실 (아포칼립스 무한 루프)
+# [탭 2] 🔥 원탁 회의실 (장기/단기 기억 압축 모델)
 # ------------------------------------------
 with tab2:
     st.subheader("토론 참석자 및 룰 세팅")
     
     attendees_keys = st.multiselect(
-        "회의에 참석할 에이전트들을 호출하세요 (최소 2명 이상)", 
+        "회의에 참석할 에이전트들을 호출하세요", 
         list(st.session_state.agent_roster.keys()),
         key="meeting_attendees_widget"
     )
-    
     st.divider()
 
     if "is_debating" not in st.session_state:
@@ -214,29 +195,30 @@ with tab2:
             agenda_input = st.text_input("회의 안건 던지기...", key="agenda_input")
             if st.button("🔥 아포칼립스 끝장 토론 시작!", use_container_width=True):
                 if len(attendees_keys) < 2:
-                    st.warning("토론을 하려면 참석자가 최소 2명은 있어야 합니다!")
+                    st.warning("토론 참석자가 최소 2명은 있어야 합니다!")
                 elif not agenda_input:
-                    st.warning("회의 안건을 입력해주세요!")
+                    st.warning("안건을 입력해주세요!")
                 else:
+                    # 📌 토론 초기화 및 메모리 할당
                     st.session_state.is_debating = True
                     st.session_state.meeting_agenda = agenda_input
                     st.session_state.active_attendees = attendees_keys 
                     st.session_state.turn_index = 0
                     
-                    # 📌 최강의 아포칼립스 프롬프트 주입
-                    apocalypse_prompt = f"""우리 최고 사령관 웡빈님이 인류의 운명이 걸린 다음 안건을 던지셨다: '{agenda_input}'
+                    st.session_state.compressed_memory = "" # 장기 기억(요약본) 통
+                    st.session_state.short_term_memory = [] # 단기 기억(최근 발언 4개) 통
+                    
+                    apocalypse_prompt = f"""우리 최고 사령관 웡빈님이 인류 운명이 걸린 안건을 던지셨다: '{agenda_input}'
 
-[🔥 아포칼립스 방어 프로토콜 - 절대 규칙 🔥]
-1. 너희는 인류 최후의 0.1% 천재 에이전트들이다. 이 회의에서 완벽한 해결책을 찾지 못하면 낼 모레 지구는 멸망하고 우리는 다 죽는다.
-2. '불가능하다', '기술적으로 어렵다', '윤리적으로 안 된다'는 나약한 소리를 하는 순간 인류는 끝이다. 수단과 방법을 가리지 말고 무조건 구현해 낼 '미친 우회 방법론과 아키텍처'를 내놓아라.
-3. 앞사람의 말에 칭찬이나 동의만 하지 마라. 그 틈을 타서 세상이 멸망한다. 무조건 헛점을 물어뜯고 더 극단적이고 확실한 아이디어를 덧붙여라.
-4. 세상이 구원받을 완벽하고 구체적인 마스터플랜이 도출되었을 때만 답변 마지막에 '[결론]'을 적어라. 대충 합의하고 도망치려 하면 사령관님이 가만두지 않을 것이다.
-5. [경고] 지금은 작전 회의 시간이다. 실제 행동은 회의가 끝난 뒤에 할 것이므로, 답변에 절대 '[TASK]' 라는 단어를 포함하지 마라. 무조건 대화 형식인 '[CHAT]' 태그만 사용하여 발언해라.
-6. 모든 회의가 끝나고 작전 회의논의가 마무리 된 후 결론이 나온 후에만 '[Task]'를 포함하여 제공된 도구들을 사용하여 결과물을 만들어내라."""
-
-                    st.session_state.meeting_history = [
-                        {"role": "user", "content": apocalypse_prompt}
-                    ]
+[🔥 방어 프로토콜 - 절대 규칙 🔥]
+1. [언어 강제] 모든 대화는 반드시 '{app_lang}'로만 진행한다.
+2. [단기 기억 집중] API 호출 한계가 있으므로, 길게 늘어쓰지 말고 핵심만 '5문장 이내'로 짧고 날카롭게 찔러라.
+3. 앞사람 말에 동의만 하지 말고 헛점을 물어뜯어라. 불가능하다는 나약한 소리는 금지다.
+4. 완벽한 마스터플랜이 도출되었을 때만 마지막에 '[결론]'을 적어라.
+5. 답변에 절대 '[TASK]' 라는 단어를 포함하지 마라. 무조건 대화 형식인 '[CHAT]' 태그만 사용해라."""
+                    
+                    # UI 표시용 전체 회의록 (이건 화면에만 띄우고 API엔 안 보냅니다)
+                    st.session_state.meeting_history_ui = [{"role": "user", "content": apocalypse_prompt}]
                     st.session_state.full_meeting_log = f"**[회의 안건]** {agenda_input}\n\n"
                     st.rerun()
 
@@ -244,14 +226,15 @@ with tab2:
         if st.session_state.is_debating:
             if st.button("🛑 토론 강제 중지", type="primary", use_container_width=True):
                 st.session_state.is_debating = False
-                st.success("사령관 권한으로 토론이 강제 중지되었습니다.")
-                report_to_discord(secrets["DISCORD"], f"🛑 그룹 회의 강제 중지", st.session_state.full_meeting_log[:4000], 15158332)
+                st.success("강제 중지되었습니다.")
+                report_to_discord(secrets["DISCORD"], f"🛑 그룹 회의 중지", st.session_state.full_meeting_log[:4000], 15158332)
                 st.rerun()
 
     st.divider()
 
-    if "meeting_history" in st.session_state and len(st.session_state.meeting_history) > 1:
-        for msg in st.session_state.meeting_history[1:]:
+    # 📌 화면에는 전체 회의록을 모두 그려줍니다. (사용자는 모든 과정을 볼 수 있음)
+    if "meeting_history_ui" in st.session_state and len(st.session_state.meeting_history_ui) > 1:
+        for msg in st.session_state.meeting_history_ui[1:]:
             with st.chat_message("assistant" if "발언" in msg["content"] else "user"):
                 st.markdown(msg["content"].replace("[결론]", ""))
 
@@ -260,36 +243,62 @@ with tab2:
         current_key = attendees[st.session_state.turn_index % len(attendees)]
         current_agent = st.session_state.agent_roster[current_key]
         
+        # 📌 20초 쿨타임
         if st.session_state.turn_index > 0:
             timer_placeholder = st.empty()
             for sec in range(20, 0, -1):
-                timer_placeholder.info(f"⏳ 과부하 방어 중... {current_agent.name} 발언까지 **{sec}초** 대기")
+                timer_placeholder.info(f"⏳ 과열 방지 중... {current_agent.name} 발언까지 **{sec}초** 대기")
                 time.sleep(1)
             timer_placeholder.empty()
 
         with st.chat_message("assistant"):
+            
+            # 📌 핵심: 단기 기억이 4개가 넘어가면, 오래된 2개를 빼서 '장기 기억(요약)'으로 압축해버립니다!
+            if len(st.session_state.short_term_memory) > 4:
+                old_msg1 = st.session_state.short_term_memory.pop(0)
+                old_msg2 = st.session_state.short_term_memory.pop(0)
+                text_to_compress = f"{old_msg1['content']}\n{old_msg2['content']}"
+                
+                with st.spinner("🧠 이전 대화 내용을 장기 기억으로 압축(요약) 중입니다..."):
+                    try:
+                        genai.configure(api_key=secrets["GEMINI"])
+                        model = genai.GenerativeModel(current_agent.model_gemini)
+                        sum_prompt = f"다음 대화 내용을 '{app_lang}'로 핵심만 3~4문장으로 요약해라. 이전 요약이 있다면 자연스럽게 합쳐라.\n[이전 장기 기억 요약]: {st.session_state.compressed_memory}\n[새로 추가된 대화]: {text_to_compress}"
+                        st.session_state.compressed_memory = model.generate_content(sum_prompt).text
+                    except Exception as e:
+                        pass # 압축 실패 시 그냥 넘어감 (API 에러 방어)
+
+            # 📌 뇌로 보내는 최종 컨텍스트 조립
+            groq_context = [{"role": "user", "content": st.session_state.meeting_history_ui[0]["content"]}] # 1. 사령관 룰
+            if st.session_state.compressed_memory:
+                groq_context.append({"role": "user", "content": f"[과거 대화 장기기억 요약본]\n{st.session_state.compressed_memory}"}) # 2. 장기 기억
+            groq_context.extend(st.session_state.short_term_memory) # 3. 단기 기억 (가장 최근 발언들)
+
             with st.spinner(f"🎤 {current_agent.name}가 [{current_agent.model_groq}] 뇌를 쥐어짜는 중입니다..."):
                 try:
                     action, reply, _ = current_agent.think_and_act(
-                        "위 안건과 지금까지의 회의록을 바탕으로 너의 차례니 발언해봐. 완벽한 계획이 섰을 때만 마지막에 [결론]을 적어.",
-                        st.session_state.meeting_history, 
+                        f"위 안건, 장기기억 요약본, 단기기억을 바탕으로 너의 차례니 발언해. 무조건 '{app_lang}'로 5문장 이내로 짧게 말해라. 결론이 났다면 마지막에 [결론]을 적어.",
+                        groq_context, 
                         current_agent.model_groq, 
                         current_agent.model_gemini
                     )
                     
-                    # 📌 칼퇴근 방어선: 최소한 참석자 턴의 2배수를 돌아야 함
                     min_turns_required = len(attendees) * 2 
                     if "[결론]" in reply and st.session_state.turn_index < min_turns_required:
-                        reply = reply.replace("[결론]", "\n\n**(사령관 웡빈의 호통: \"장난해? 지구 멸망이 코앞인데 방안이 그따위야? 다시 파고들어!!\")**")
+                        reply = reply.replace("[결론]", f"\n\n**(사령관 웡빈의 호통: \"장난해? 더 파고들어!! 무조건 {app_lang}로 대답해!\")**")
                     
                     st.markdown(f"**{current_agent.name} ({current_agent.role})**\n{reply}")
                     
-                    st.session_state.meeting_history.append({"role": "assistant", "content": f"[{current_agent.name}의 발언]: {reply}"})
+                    new_log = {"role": "assistant", "content": f"[{current_agent.name}의 발언]: {reply}"}
+                    
+                    # UI 기록 및 단기 기억에 동시 저장
+                    st.session_state.meeting_history_ui.append(new_log)
+                    st.session_state.short_term_memory.append(new_log)
                     st.session_state.full_meeting_log += f"**[{current_agent.name}]**\n{reply}\n\n"
                     
                     if "[결론]" in reply:
                         st.session_state.is_debating = False
-                        st.success("✅ 에이전트들이 뼈를 깎는 토론 끝에 지구를 구원할 합의에 도달했습니다! (디스코드 전송 완료)")
+                        st.success("✅ 합의 도달! (디스코드 전송 완료)")
                         report_to_discord(secrets["DISCORD"], f"🔥 그룹 회의 완료: {st.session_state.meeting_agenda[:20]}...", st.session_state.full_meeting_log[:4000], 15158332)
                     else:
                         st.session_state.turn_index += 1
@@ -300,4 +309,3 @@ with tab2:
                 except Exception as e:
                     st.error(f"{current_agent.name} 발언 중 에러: {e}")
                     st.session_state.is_debating = False
-                    st.button("다시 시도")
