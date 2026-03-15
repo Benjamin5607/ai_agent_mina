@@ -134,16 +134,29 @@
         async function loadMemory() {
             const user = document.getElementById("GITHUB_USER").value;
             const repo = document.getElementById("REPO_NAME").value;
-            if (!user || !repo) return;
+            const pat = document.getElementById("GITHUB_PAT").value; // PAT 열쇠 챙기기
+            if (!user || !repo) return false;
 
             const chatBox = document.getElementById("chatBox");
             
             try {
-                const res = await fetch(`https://raw.githubusercontent.com/${user}/${repo}/main/memory.json?t=${new Date().getTime()}`);
+                // 핵심: raw 주소가 아니라 api.github.com 주소를 찌릅니다.
+                const url = `https://api.github.com/repos/${user}/${repo}/contents/memory.json`;
+                
+                let headers = { 
+                    'Accept': 'application/vnd.github.v3.raw', // 파일 내용만 순수하게 달라는 옵션
+                    'Cache-Control': 'no-cache' // 캐시 절대 금지!
+                };
+                // PAT가 있으면 VIP 패스로 인증해서 더 확실하게 최신본을 가져옵니다
+                if (pat) headers['Authorization'] = `token ${pat}`;
+
+                const res = await fetch(url + `?t=${new Date().getTime()}`, { headers: headers });
+                
                 if (!res.ok) throw new Error("기억 파일 없음");
                 
                 const history = await res.json();
                 
+                // 새로운 메시지가 추가되었는지 확인
                 if (history.length > currentMemoryLength) {
                     currentMemoryLength = history.length;
                     
