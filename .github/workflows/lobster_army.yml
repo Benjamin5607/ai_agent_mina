@@ -1,0 +1,30 @@
+name: Lobster Agent Heartbeat
+
+on:
+  schedule:
+    - cron: '0 * * * *' # 매시간 정각에 랍스타가 깨어남
+  workflow_dispatch: # 수동으로도 실행 가능
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Lobster Agent
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          PHONE_NUMBER_ID: ${{ secrets.PHONE_NUMBER_ID }}
+          RECIPIENT_PHONE: ${{ secrets.RECIPIENT_PHONE }}
+        run: python main.py
