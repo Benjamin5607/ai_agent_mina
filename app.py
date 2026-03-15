@@ -196,19 +196,18 @@ with tab1:
 with tab2:
     st.subheader("토론 참석자 및 룰 세팅")
     
+    # 여기서 위젯 키는 "meeting_attendees_widget"으로 씁니다!
     attendees_keys = st.multiselect(
         "회의에 참석할 에이전트들을 호출하세요 (최소 2명 이상)", 
         list(st.session_state.agent_roster.keys()),
-        key="meeting_attendees"
+        key="meeting_attendees_widget" 
     )
     
     st.divider()
 
-    # 📌 상태 초기화 (처음 실행 시)
     if "is_debating" not in st.session_state:
         st.session_state.is_debating = False
 
-    # 📌 토론 제어판 UI
     col_start, col_stop = st.columns([3, 1])
     
     with col_start:
@@ -220,22 +219,20 @@ with tab2:
                 elif not agenda_input:
                     st.warning("회의 안건을 입력해주세요!")
                 else:
-                    # 토론 시작 세팅
                     st.session_state.is_debating = True
                     st.session_state.meeting_agenda = agenda_input
-                    st.session_state.meeting_attendees = attendees_keys
+                    # 📌 에러 원인 해결! 위젯 키랑 안 겹치게 "active_attendees"라는 새 변수통에 담습니다.
+                    st.session_state.active_attendees = attendees_keys 
                     st.session_state.turn_index = 0
                     
-                    # 에이전트들에게 "결론"을 내라는 룰을 주입!
                     st.session_state.meeting_history = [
                         {"role": "user", "content": f"우리 CEO 웡빈님이 다음 안건을 던지셨어: '{agenda_input}'\n너의 직무에 맞게 전문적인 의견을 내고 비판해. 만약 충분히 논의되었고 팀 전체의 최종 결론이 도출되었다면 답변 가장 마지막에 반드시 '[결론]' 이라는 단어를 적어줘. 그러면 회의가 종료될 거야."}
                     ]
                     st.session_state.full_meeting_log = f"**[회의 안건]** {agenda_input}\n\n"
-                    st.rerun() # 화면을 새로고침하여 루프 시작!
+                    st.rerun()
 
     with col_stop:
         if st.session_state.is_debating:
-            # 토론이 진행 중일 때만 보이는 빨간색 강제 종료 버튼
             if st.button("🛑 토론 강제 중지", type="primary", use_container_width=True):
                 st.session_state.is_debating = False
                 st.success("CEO 권한으로 토론이 강제 중지되었습니다.")
@@ -244,27 +241,24 @@ with tab2:
 
     st.divider()
 
-    # 📌 지금까지의 회의록 화면에 그리기
     if "meeting_history" in st.session_state and len(st.session_state.meeting_history) > 1:
         for msg in st.session_state.meeting_history[1:]:
             with st.chat_message("assistant" if "발언" in msg["content"] else "user"):
                 st.markdown(msg["content"].replace("[결론]", ""))
 
-    # 📌 실제 무한 루프 토론 진행 로직 (is_debating이 True일 때 한 턴씩 실행)
     if st.session_state.is_debating:
-        attendees = st.session_state.meeting_attendees
+        # 📌 저장해둔 새로운 변수(active_attendees)를 불러옵니다!
+        attendees = st.session_state.active_attendees 
         current_key = attendees[st.session_state.turn_index % len(attendees)]
         current_agent = st.session_state.agent_roster[current_key]
         
-        # 쿨타임(20초) 대기 UI - 첫 발언(턴 0)일 때는 바로 말하게 해줌
         if st.session_state.turn_index > 0:
             timer_placeholder = st.empty()
             for sec in range(20, 0, -1):
                 timer_placeholder.info(f"⏳ Groq API 차단 방어 중... {current_agent.name} 발언까지 **{sec}초** 대기")
                 time.sleep(1)
-            timer_placeholder.empty() # 카운트다운 끝나면 알림창 지우기
+            timer_placeholder.empty()
 
-        # 에이전트 뇌 가동
         with st.chat_message("assistant"):
             with st.spinner(f"🎤 {current_agent.name}가 [{current_agent.model_groq}] 뇌를 가동 중입니다..."):
                 try:
@@ -277,22 +271,20 @@ with tab2:
                     
                     st.markdown(f"**{current_agent.name} ({current_agent.role})**\n{reply}")
                     
-                    # 기록 저장
                     st.session_state.meeting_history.append({"role": "assistant", "content": f"[{current_agent.name}의 발언]: {reply}"})
                     st.session_state.full_meeting_log += f"**[{current_agent.name}]**\n{reply}\n\n"
                     
-                    # 📌 자동 종료 감지 (에이전트가 합의를 봤을 때)
                     if "[결론]" in reply:
                         st.session_state.is_debating = False
                         st.success("✅ 에이전트들이 합의에 도달하여 토론이 자동 종료되었습니다! (디스코드 전송 완료)")
                         report_to_discord(secrets["DISCORD"], f"🔥 그룹 회의 완료: {st.session_state.meeting_agenda[:20]}...", st.session_state.full_meeting_log[:4000], 15158332)
                     else:
-                        st.session_state.turn_index += 1 # 다음 타자로 넘김
+                        st.session_state.turn_index += 1
                     
-                    time.sleep(1) # UI 렌더링을 위해 잠깐 쉼
-                    st.rerun() # 🌟 핵심: 다음 턴을 위해 스크립트를 재실행!
+                    time.sleep(1)
+                    st.rerun()
                     
                 except Exception as e:
                     st.error(f"{current_agent.name} 발언 중 에러: {e}")
-                    st.session_state.is_debating = False # 에러 나면 폭주 방지를 위해 정지
+                    st.session_state.is_debating = False
                     st.button("다시 시도")
