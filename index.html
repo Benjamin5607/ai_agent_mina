@@ -7,8 +7,9 @@
         body { font-family: 'Inter', sans-serif; background: #1a1a1a; color: #eee; padding: 20px; max-width: 800px; margin: 0 auto; }
         .card { background: #2a2a2a; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         select, input { width: 95%; padding: 10px; margin: 10px 0; border-radius: 6px; border: 1px solid #444; background: #333; color: white; }
-        button { background: #ff4757; color: white; border: none; padding: 15px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 1.1em; }
-        button:hover { background: #ff6b81; }
+        button { background: #ff4757; color: white; border: none; padding: 15px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%; font-size: 1.1em; margin-top: 10px; }
+        .btn-small { background: #3742fa; padding: 10px; font-size: 0.9em; width: auto; display: inline-block; }
+        button:hover { filter: brightness(1.1); }
         .info-text { font-size: 0.85em; color: #ffa502; margin-bottom: 10px; }
         .section-title { color: #ff4757; border-bottom: 1px solid #444; padding-bottom: 10px; }
     </style>
@@ -19,32 +20,31 @@
 
     <div class="card">
         <h3 class="section-title">1. 깃허브 브릿지 연결 (필수)</h3>
-        <p class="info-text">이 정보는 브라우저 로컬스토리지에만 저장됩니다.</p>
-        <label>GitHub 아이디</label>
-        <input type="text" id="GITHUB_USER" placeholder="예: myusername">
-        <label>레포지토리 이름</label>
-        <input type="text" id="REPO_NAME" placeholder="예: lobster-army">
-        <label>GitHub PAT (Personal Access Token)</label>
-        <input type="password" id="GITHUB_PAT" placeholder="workflow 권한이 있는 토큰">
+        <p class="info-text">모든 정보는 브라우저 로컬스토리지에만 안전하게 저장됩니다.</p>
+        <input type="text" id="GITHUB_USER" placeholder="GitHub 아이디 (예: myusername)">
+        <input type="text" id="REPO_NAME" placeholder="레포지토리 이름 (예: lobster-army)">
+        <input type="password" id="GITHUB_PAT" placeholder="GitHub PAT (workflow 권한 필요)">
     </div>
 
     <div class="card">
-        <h3 class="section-title">2. 뇌(Groq Model) 선택</h3>
-        <select id="modelSelect" onchange="updateModelDesc()">
-            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile) - 복잡한 논리 및 범용</option>
-            <option value="llama-3.1-8b-instant">Llama 3.1 8B (Instant) - 빠른 속도 및 단순 반복</option>
-            <option value="mixtral-8x7b-32768">Mixtral 8x7B (MoE) - 창의적 글쓰기 및 다국어</option>
+        <h3 class="section-title">2. 뇌(Groq Model) 실시간 선택</h3>
+        <p class="info-text">Groq API 키를 입력하고 목록을 불러오세요.</p>
+        <input type="password" id="FRONTEND_GROQ_KEY" placeholder="Groq API Key (목록 불러오기용)">
+        <button class="btn-small" onclick="fetchGroqModels()">🔄 현재 가능한 모델 목록 불러오기</button>
+        
+        <select id="modelSelect" onchange="updateModelDesc()" style="margin-top: 15px;">
+            <option value="">먼저 모델 목록을 불러오세요...</option>
         </select>
-        <div id="modelDesc" class="info-text"></div>
+        <div id="modelDesc" class="info-text" style="margin-top: 5px;"></div>
     </div>
 
     <div class="card">
         <h3 class="section-title">3. 직무 할당 및 무료 도구 연결</h3>
         <select id="taskSelect" onchange="updateTaskFields()">
+            <option value="ops_risk">BPO Ops / Risk Management (Contract, Crawler)</option>
             <option value="coding">Coding / Developer (GitHub, News API)</option>
             <option value="contents">Contents Creator (Pixabay, YouTube API)</option>
             <option value="data">Data Analysis / Documentation (CoinGecko, Sheets)</option>
-            <option value="ops_risk">BPO Ops / Risk Management (Contract Analysis, Web Crawler)</option>
         </select>
         <div id="apiFields"></div>
     </div>
@@ -55,19 +55,84 @@
 
     <script>
         const taskApis = {
+            "ops_risk": ["RISK_RADAR_ENDPOINT", "CRAWLER_API_KEY"],
             "coding": ["NEWS_API_KEY"],
             "contents": ["YOUTUBE_API_KEY", "PIXABAY_KEY"],
-            "data": ["OPENWEATHER_KEY"],
-            "ops_risk": ["RISK_RADAR_ENDPOINT", "CRAWLER_API_KEY"]
+            "data": ["OPENWEATHER_KEY"]
         };
 
-        // 로컬스토리지 값 불러와서 세팅
+        // 로컬스토리지 값 불러오기
         window.onload = () => {
-            ["GITHUB_USER", "REPO_NAME", "GITHUB_PAT", "modelSelect", "taskSelect"].forEach(id => {
+            ["GITHUB_USER", "REPO_NAME", "GITHUB_PAT", "FRONTEND_GROQ_KEY", "taskSelect"].forEach(id => {
                 if(localStorage.getItem(id)) document.getElementById(id).value = localStorage.getItem(id);
             });
             updateTaskFields();
+            
+            // API 키가 저장되어 있으면 자동으로 모델 목록 불러오기
+            if(document.getElementById("FRONTEND_GROQ_KEY").value) {
+                fetchGroqModels();
+            }
         };
+
+        // Groq API를 찔러서 실시간 모델 목록 가져오기
+        async function fetchGroqModels() {
+            const apiKey = document.getElementById("FRONTEND_GROQ_KEY").value;
+            if (!apiKey) {
+                alert("Groq API 키를 입력해주세요!"); return;
+            }
+            
+            // 키 저장
+            localStorage.setItem("FRONTEND_GROQ_KEY", apiKey);
+            const select = document.getElementById("modelSelect");
+            select.innerHTML = '<option>불러오는 중...</option>';
+
+            try {
+                const response = await fetch("https://api.groq.com/openai/v1/models", {
+                    method: "GET",
+                    headers: { "Authorization": `Bearer ${apiKey}` }
+                });
+
+                if (!response.ok) throw new Error("API 키가 잘못되었거나 네트워크 오류입니다.");
+                
+                const data = await response.json();
+                
+                // whisper 모델(음성 전용) 등은 제외하고 텍스트 모델만 필터링 (선택적)
+                const models = data.data.filter(m => !m.id.includes("whisper"));
+                
+                select.innerHTML = '';
+                models.forEach(model => {
+                    const option = document.createElement("option");
+                    option.value = model.id;
+                    option.text = model.id;
+                    
+                    // 이전에 선택했던 모델 자동 선택
+                    if(localStorage.getItem("modelSelect") === model.id) {
+                        option.selected = true;
+                    }
+                    select.appendChild(option);
+                });
+                
+                updateModelDesc();
+                
+            } catch (error) {
+                alert(error.message);
+                select.innerHTML = '<option value="">목록을 불러오지 못했습니다.</option>';
+            }
+        }
+
+        // 모델 이름(ID)을 분석해서 자동으로 강점 설명 달아주기
+        function updateModelDesc() {
+            const modelId = document.getElementById('modelSelect').value.toLowerCase();
+            let desc = "강점: Groq에서 제공하는 최신 모델입니다.";
+            
+            if (modelId.includes("70b")) desc = "강점: 파라미터가 커서 복잡한 논리, 긴 계약서 문맥 이해, 가장 똑똑한 판단(Risk Management) 필요 시 추천!";
+            else if (modelId.includes("8b")) desc = "강점: 미친 처리 속도. 단순 데이터 분류, 실시간 크롤링 요약, 가성비 작업에 최적화!";
+            else if (modelId.includes("mixtral")) desc = "강점: 다국어 처리에 강함. 글로벌 BPO 업무나 다국어 번역, 창의적 글쓰기에 추천!";
+            else if (modelId.includes("gemma")) desc = "강점: 구글에서 만든 경량 모델. 빠르고 효율적인 텍스트 생성에 적합합니다.";
+            
+            document.getElementById('modelDesc').innerText = desc;
+            localStorage.setItem("modelSelect", document.getElementById('modelSelect').value);
+        }
 
         function updateTaskFields() {
             const task = document.getElementById('taskSelect').value;
@@ -82,12 +147,11 @@
         }
 
         async function saveAndRun() {
-            // 기본 세팅 저장
-            ["GITHUB_USER", "REPO_NAME", "GITHUB_PAT", "modelSelect", "taskSelect"].forEach(id => {
+            // ... (기존 saveAndRun 로직과 100% 동일) ...
+            ["GITHUB_USER", "REPO_NAME", "GITHUB_PAT", "taskSelect"].forEach(id => {
                 localStorage.setItem(id, document.getElementById(id).value);
             });
 
-            // 추가 API 키들을 모아서 JSON 문자열로 만듭니다 (깃허브 액션으로 넘길 페이로드)
             let extraKeys = {};
             document.querySelectorAll('.extra-api').forEach(input => {
                 localStorage.setItem(input.id, input.value);
@@ -100,11 +164,10 @@
             const model = document.getElementById("modelSelect").value;
             const task = document.getElementById("taskSelect").value;
 
-            if (!pat || !user || !repo) {
-                alert("깃허브 브릿지 정보를 모두 입력해주세요!"); return;
+            if (!pat || !user || !repo || !model) {
+                alert("필수 정보(깃허브 브릿지 및 모델 선택)를 모두 확인해주세요!"); return;
             }
 
-            // GitHub API 호출
             const url = `https://api.github.com/repos/${user}/${repo}/actions/workflows/lobster_army.yml/dispatches`;
             
             try {
@@ -116,7 +179,7 @@
                         inputs: {
                             model: model,
                             task: task,
-                            extra_keys: JSON.stringify(extraKeys) // 로컬 저장된 키들을 액션으로 전달
+                            extra_keys: JSON.stringify(extraKeys)
                         }
                     })
                 });
