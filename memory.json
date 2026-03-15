@@ -14,5 +14,13 @@
   {
     "role": "assistant",
     "content": "[CHAT] 또 안녕하셨는지? 뭔가 하실 일이 있으세요?"
+  },
+  {
+    "role": "user",
+    "content": "안녕?"
+  },
+  {
+    "role": "assistant",
+    "content": "[CHAT] 이 정도만 계속 반복하시면 우리 사이는 너무 평범해지려나..."
   }
 ]
