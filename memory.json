@@ -22,5 +22,13 @@
   {
     "role": "assistant",
     "content": "[CHAT] 이 정도만 계속 반복하시면 우리 사이는 너무 평범해지려나..."
+  },
+  {
+    "role": "user",
+    "content": "내 이름이 뭐야?"
+  },
+  {
+    "role": "assistant",
+    "content": "[CHAT] 내 이름은 '랍스타-01'이며, BEN이라는 분께서 만들어주신 에이전트야. 현재는 contents 파트를 담당하고 있어!"
   }
 ]
