@@ -14,12 +14,12 @@ on:
       gemini_model:
         description: 'Gemini Model'
         required: true
-        default: 'models/gemini-2.5-flash'
+        default: 'models/gemini-1.5-flash'
       task:
         description: 'Assigned Task'
         required: true
         default: 'ops_risk'
-      extra_keys:          # <--- 이게 빠져있어서 에러가 난 겁니다!
+      extra_keys:
         description: 'Extra API Keys (JSON)'
         required: false
         default: '{}'
@@ -27,6 +27,9 @@ on:
 jobs:
   run-lobster:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # ★ 핵심: 랍스타가 기억(파일)을 저장할 수 있게 권한 부여
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -49,3 +52,11 @@ jobs:
           GEMINI_MODEL: ${{ github.event.inputs.gemini_model }}
           LOBSTER_TASK: ${{ github.event.inputs.task }}
         run: python main.py
+
+      # ★ 파이썬이 끝난 후 만들어진 memory.json을 깃허브에 영구 저장
+      - name: Save Lobster Memory
+        run: |
+          git config --global user.name "Lobster-Memory"
+          git config --global user.email "memory@lobster.local"
+          git add memory.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🧠 랍스타 단기 기억 업데이트" && git push)
