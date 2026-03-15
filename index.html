@@ -42,13 +42,20 @@
     <h1 style="text-align: center; color: #ff4757;">🦞 Lobster Chat Center</h1>
 
     <details style="background: #2a2a2a; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #444;">
-        <summary style="cursor: pointer; color: #ffa502; font-weight: bold; font-size: 1.1em; outline: none;">⚙️ 시스템 및 모델 설정 열기/닫기</summary>
+        <summary style="cursor: pointer; color: #ffa502; font-weight: bold; font-size: 1.1em; outline: none;">⚙️ 시스템 설정 열기/닫기 (최초 1회 PAT 입력)</summary>
         
         <div style="margin-top: 20px;">
             <h3 class="section-title">1. 깃허브 브릿지 연결</h3>
-            <input type="text" id="GITHUB_USER" placeholder="GitHub 아이디">
-            <input type="text" id="REPO_NAME" placeholder="레포지토리 이름">
-            <input type="password" id="GITHUB_PAT" placeholder="GitHub PAT">
+            
+            <div id="githubUserContainer">
+                <input type="text" id="GITHUB_USER" placeholder="GitHub 아이디 (수동 입력용)">
+            </div>
+            <div id="repoNameContainer">
+                <input type="text" id="REPO_NAME" placeholder="레포지토리 이름 (수동 입력용)">
+            </div>
+            
+            <p class="info-text" id="autoDetectMsg" style="display:none; color: #2ed573;">✅ 깃허브 페이지 주소를 감지하여 아이디와 레포지토리가 자동 세팅되었습니다!</p>
+            <input type="password" id="GITHUB_PAT" placeholder="🔑 GitHub PAT (workflow 권한) - 최초 1회만 입력">
 
             <h3 class="section-title" style="margin-top: 20px;">2. 모델 선택</h3>
             <button class="btn-small" onclick="fetchModels()">🔄 깃허브에서 리스트 불러오기</button>
@@ -79,8 +86,8 @@
     </div>
 
     <script>
-        let currentMemoryLength = 0; // 현재까지의 대화 개수 저장용 변수
-        let autoPollInterval = null; // 자동 새로고침 타이머
+        let currentMemoryLength = 0; 
+        let autoPollInterval = null; 
 
         const taskApis = {
             "ops_risk": ["RISK_RADAR_ENDPOINT", "CRAWLER_API_KEY"],
@@ -90,18 +97,40 @@
         };
 
         window.onload = () => {
-            ["GITHUB_USER", "REPO_NAME", "GITHUB_PAT", "taskSelect"].forEach(id => {
-                if(localStorage.getItem(id)) document.getElementById(id).value = localStorage.getItem(id);
-            });
+            // ★ 깃허브 페이지(웹 호스팅) 접속 여부 자동 감지 로직
+            const isGitHubPages = window.location.hostname.includes("github.io");
+
+            if (isGitHubPages) {
+                // 주소창에서 아이디와 레포 이름 추출 (예: wongbin.github.io/lobster-army)
+                const autoUser = window.location.hostname.split('.')[0];
+                const autoRepo = window.location.pathname.split('/')[1] || "";
+
+                document.getElementById("GITHUB_USER").value = autoUser;
+                document.getElementById("REPO_NAME").value = autoRepo;
+
+                // 화면에서 입력칸 날려버리기
+                document.getElementById("githubUserContainer").style.display = "none";
+                document.getElementById("repoNameContainer").style.display = "none";
+                document.getElementById("autoDetectMsg").style.display = "block"; // 감지 성공 메시지 띄움
+            } else {
+                // 로컬에서 테스트할 때만 로컬스토리지에서 복원
+                if(localStorage.getItem("GITHUB_USER")) document.getElementById("GITHUB_USER").value = localStorage.getItem("GITHUB_USER");
+                if(localStorage.getItem("REPO_NAME")) document.getElementById("REPO_NAME").value = localStorage.getItem("REPO_NAME");
+            }
+
+            // PAT 및 기타 세팅 복원
+            if(localStorage.getItem("GITHUB_PAT")) document.getElementById("GITHUB_PAT").value = localStorage.getItem("GITHUB_PAT");
+            if(localStorage.getItem("taskSelect")) document.getElementById("taskSelect").value = localStorage.getItem("taskSelect");
+
             updateTaskFields();
             
+            // 정보가 다 채워져 있다면 초기 데이터 로드 시작
             if(document.getElementById("GITHUB_USER").value && document.getElementById("REPO_NAME").value) {
                 fetchModels();
-                loadMemory(); // 초기 로드
+                loadMemory(); 
             }
         };
 
-        // 채팅 기록 불러오기 함수
         async function loadMemory() {
             const user = document.getElementById("GITHUB_USER").value;
             const repo = document.getElementById("REPO_NAME").value;
@@ -115,11 +144,10 @@
                 
                 const history = await res.json();
                 
-                // 새로운 메시지가 추가되었는지 확인
                 if (history.length > currentMemoryLength) {
                     currentMemoryLength = history.length;
                     
-                    chatBox.innerHTML = ''; // 화면 초기화 후 다시 그리기
+                    chatBox.innerHTML = ''; 
                     history.forEach(msg => {
                         const div = document.createElement('div');
                         div.className = `message ${msg.role === 'user' ? 'msg-user' : 'msg-bot'}`;
@@ -128,7 +156,7 @@
                     });
                     
                     chatBox.scrollTop = chatBox.scrollHeight;
-                    return true; // 성공적으로 새 메시지 업데이트 됨
+                    return true; 
                 }
                 return false;
             } catch (e) {
@@ -139,11 +167,12 @@
             }
         }
 
-        async function fetchModels() { /* 기존 로직과 동일하여 생략 없이 유지 */
+        async function fetchModels() {
             const user = document.getElementById("GITHUB_USER").value;
             const repo = document.getElementById("REPO_NAME").value;
             if (!user || !repo) return;
             const timestamp = new Date().getTime();
+
             try {
                 const groqRes = await fetch(`https://raw.githubusercontent.com/${user}/${repo}/main/models.json?t=${timestamp}`);
                 const groqData = await groqRes.json();
@@ -184,13 +213,13 @@
 
             if (!message) { alert("메시지를 입력해주세요!"); return; }
 
-            // 1. 내 메시지를 즉시 화면에 띄움
+            // 내가 보낸 메시지 즉시 띄우기
             const myMsgDiv = document.createElement('div');
             myMsgDiv.className = 'message msg-user';
             myMsgDiv.innerText = message;
             chatBox.appendChild(myMsgDiv);
             
-            // 2. "입력 중..." 애니메이션 띄움
+            // 랍스타 "입력 중..." 타이핑 애니메이션
             const typingDiv = document.createElement('div');
             typingDiv.className = 'message msg-bot typing-indicator';
             typingDiv.id = 'typingIndicator';
@@ -198,25 +227,38 @@
             chatBox.appendChild(typingDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
             
-            // 버튼 비활성화 (중복 전송 방지)
             btn.innerText = "전송 중...";
             btn.disabled = true;
             userMessageInput.value = '';
 
-            // 설정 저장
-            ["GITHUB_USER", "REPO_NAME", "GITHUB_PAT", "modelSelect", "geminiModelSelect", "taskSelect"].forEach(id => {
-                if (document.getElementById(id)) localStorage.setItem(id, document.getElementById(id).value);
-            });
+            // 설정값들 로컬스토리지에 저장
+            if (!document.getElementById("githubUserContainer").style.display) {
+                 localStorage.setItem("GITHUB_USER", document.getElementById("GITHUB_USER").value);
+                 localStorage.setItem("REPO_NAME", document.getElementById("REPO_NAME").value);
+            }
+            localStorage.setItem("GITHUB_PAT", document.getElementById("GITHUB_PAT").value);
+            localStorage.setItem("modelSelect", document.getElementById("modelSelect").value);
+            localStorage.setItem("geminiModelSelect", document.getElementById("geminiModelSelect").value);
+            localStorage.setItem("taskSelect", document.getElementById("taskSelect").value);
+
             let extraKeys = {};
             document.querySelectorAll('.extra-api').forEach(input => { localStorage.setItem(input.id, input.value); extraKeys[input.id] = input.value; });
 
             const user = document.getElementById("GITHUB_USER").value;
             const repo = document.getElementById("REPO_NAME").value;
             const pat = document.getElementById("GITHUB_PAT").value;
+
+            if (!pat) {
+                alert("GitHub PAT를 입력해주세요! (톱니바퀴 메뉴 확인)");
+                btn.innerText = "전송 🚀";
+                btn.disabled = false;
+                document.getElementById('typingIndicator').remove();
+                return;
+            }
+
             const url = `https://api.github.com/repos/${user}/${repo}/actions/workflows/lobster_army.yml/dispatches`;
             
             try {
-                // 깃허브 액션 트리거!
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: { 'Authorization': `token ${pat}`, 'Accept': 'application/vnd.github.v3+json' },
@@ -235,42 +277,41 @@
                 if (response.ok) {
                     btn.innerText = "답변 대기중 ⏳";
                     
-                    // 핵심 자동화: 5초에 한 번씩 깃허브 메모리를 들여다보는 타이머(폴링) 가동!
                     let pollCount = 0;
                     if(autoPollInterval) clearInterval(autoPollInterval);
                     
+                    // 5초 간격으로 깃허브 메모리(일기장) 확인
                     autoPollInterval = setInterval(async () => {
                         pollCount++;
                         const isUpdated = await loadMemory();
                         
-                        // 대화가 업데이트 되었거나(성공), 너무 오래 기다렸다면(약 60초) 타이머 종료
                         if (isUpdated || pollCount > 12) {
                             clearInterval(autoPollInterval);
                             const typingElem = document.getElementById('typingIndicator');
-                            if(typingElem) typingElem.remove(); // 타이핑 애니메이션 제거
+                            if(typingElem) typingElem.remove(); 
                             
                             btn.innerText = "전송 🚀";
                             btn.disabled = false;
                             
                             if (!isUpdated) {
-                                // 60초 넘게 답변이 안 올 경우 에러 메시지
                                 const errDiv = document.createElement('div');
                                 errDiv.className = 'message msg-bot';
-                                errDiv.innerText = "❌ 답변이 지연되고 있습니다. 깃허브의 Actions 탭에서 에러가 발생했는지 확인해주세요.";
+                                errDiv.innerText = "❌ 답변이 지연되고 있습니다. 깃허브의 Actions 탭에서 에러를 확인해주세요.";
                                 chatBox.appendChild(errDiv);
                                 chatBox.scrollTop = chatBox.scrollHeight;
                             }
                         }
-                    }, 5000); // 5000ms = 5초마다 확인
+                    }, 5000); 
 
                 } else { 
-                    throw new Error("깃허브 액션 호출에 실패했습니다.");
+                    throw new Error("깃허브 액션 호출 권한이 없거나 에러가 발생했습니다.");
                 }
             } catch (e) { 
                 alert("에러: " + e.message); 
                 btn.innerText = "전송 🚀";
                 btn.disabled = false;
-                document.getElementById('typingIndicator').remove();
+                const typingElem = document.getElementById('typingIndicator');
+                if(typingElem) typingElem.remove();
             }
         }
     </script>
