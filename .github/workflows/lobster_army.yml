@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       user_message:
-        description: '사용자 메시지 (대화 또는 지시)'
+        description: '사용자 메시지'
         required: true
         default: '안녕?'
       model:
@@ -14,11 +14,15 @@ on:
       gemini_model:
         description: 'Gemini Model'
         required: true
-        default: 'models/gemini-1.5-flash'
+        default: 'models/gemini-2.5-flash'
       task:
         description: 'Assigned Task'
         required: true
         default: 'ops_risk'
+      extra_keys:          # <--- 이게 빠져있어서 에러가 난 겁니다!
+        description: 'Extra API Keys (JSON)'
+        required: false
+        default: '{}'
 
 jobs:
   run-lobster:
