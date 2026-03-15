@@ -1,35 +1,34 @@
-name: Update Groq Models List
+name: Update API Models List
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 매일 자정(UTC 기준)에 자동 실행
-  workflow_dispatch: # 수동으로 버튼 눌러서 실행 가능
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 
 jobs:
   update-models:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 봇이 레포지토리에 파일을 쓰기 위한 권한 (매우 중요!)
+      contents: write
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Fetch Models from Groq API
+      - name: Fetch Models from Groq and Gemini
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # Groq API를 찔러서 결과를 models.json 파일로 예쁘게 저장
-          curl -s -X GET "https://api.groq.com/openai/v1/models" \
-            -H "Authorization: Bearer $GROQ_API_KEY" \
-            -H "Content-Type: application/json" | jq '.' > models.json
-
-      - name: Commit and Push to Repository
-        run: |
-          # 랍스타 봇이 깃허브에 파일 커밋하기
-          git config --global user.name "Lobster-Bot"
-          git config --global user.email "bot@lobster-army.local"
-          git add models.json
+          # Groq 모델 가져오기
+          curl -s -X GET "https://api.groq.com/openai/v1/models" -H "Authorization: Bearer $GROQ_API_KEY" | jq '.' > models.json
           
-          # 변경사항이 있을 때만 푸시하도록 처리 (에러 방지)
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 랍스타 봇: 최신 Groq 모델 리스트 업데이트 완료" && git push)
+          # Gemini 모델 가져오기
+          curl -s -X GET "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" | jq '.' > gemini_models.json
+
+      - name: Commit and Push
+        run: |
+          git config --global user.name "Lobster-Bot"
+          git config --global user.email "bot@lobster.local"
+          git add models.json gemini_models.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 랍스타 봇: Groq & Gemini 모델 리스트 업데이트" && git push)
