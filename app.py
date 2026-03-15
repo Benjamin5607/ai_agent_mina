@@ -4,77 +4,81 @@ from discord_bot import report_to_discord
 from agent import LobsterAgent
 
 st.set_page_config(page_title="랍스타 컨트롤 센터", page_icon="🦞", layout="wide")
-st.title("🦞 Lobster Chat Center (어벤져스 군단)")
+st.title("🦞 Lobster Chat Center (툴 장착형 멀티 에이전트)")
 
 # ==========================================
 # 1. 환경 세팅 및 비밀열쇠 로드
 # ==========================================
 secrets = get_secrets()
 
-# 모델 특성 가이드 사전 (UI 표시용)
 def get_model_desc(model_name):
     m = model_name.lower()
     if "70b" in m: return "🧠 [압도적 지능] 복잡한 논리 추론 및 프로젝트 리드에 최적"
     if "8b" in m: return "⚡ [보조 두뇌] 가볍고 빠름, 단순 리서치 및 요약에 적합"
     if "mixtral" in m: return "🎨 [창의력 대장] 유연한 사고와 아이디어 브레인스토밍 특화"
-    if "gemma" in m: return "📝 [서기/정리] 구글 경량 모델, 깔끔한 텍스트 및 코드 리뷰"
+    if "gemma" in m: return "📝 [서기/정리] 구글 경량 모델, 깔끔한 텍스트 및 문서 리뷰"
     if "pro" in m: return "💎 [고급 실무] 방대한 문서 분석 및 고품질 코딩/문서 작성"
     if "flash" in m: return "⚡ [가속 실무] 초고속 실무 처리 및 즉각적인 반응"
     return "💡 일반 범용 모델"
 
+# 📌 시스템에 등록된 전체 API 툴 리스트 (무기고)
+AVAILABLE_TOOLS = [
+    "📝 Notion API (문서 작성 및 관리)",
+    "🐙 GitHub API (코드 푸시 및 PR 리뷰)",
+    "💬 Slack API (팀 메신저 알림)",
+    "📊 Google Sheets API (데이터 기록 및 분석)",
+    "🌐 Web Crawler (웹 검색 및 정보 스크래핑)",
+    "🎨 Pixabay API (이미지 소스 검색)"
+]
+
 # ==========================================
 # 2. 에이전트 대기실 (Roster) 초기화
 # ==========================================
-# 처음 켜질 때 기본으로 제공되는 랍스타 1호
 if "agent_roster" not in st.session_state:
     default_agent = LobsterAgent(
         groq_key=secrets["GROQ"], gemini_key=secrets["GEMINI"], name="랍스타-01", role="만능 비서"
     )
-    # 랍스타 1호에게 기본 모델 장착
     default_agent.model_groq = "llama-3.3-70b-versatile"
     default_agent.model_gemini = "models/gemini-1.5-flash"
+    default_agent.tools = ["🌐 Web Crawler (웹 검색 및 정보 스크래핑)"] # 기본 무기 하나 쥐여줌
     
     st.session_state.agent_roster = {"랍스타-01 (만능 비서)": default_agent}
 
 # ==========================================
-# 3. 사이드바 (★ 에이전트 맞춤 채용소)
+# 3. 사이드바 (★ 무기 장착형 채용소)
 # ==========================================
 with st.sidebar:
     st.header("🦞 군단 인력소 (채용/배치)")
     
-    # API에서 모델 리스트 가져오기
     groq_models = get_groq_models(secrets["GROQ"])
     gemini_models = get_gemini_models(secrets["GEMINI"])
     
-    with st.expander("➕ 새 에이전트 채용 (모델 직접 선택)", expanded=True):
-        st.caption("이름, 직무, 그리고 사용할 뇌/손발 모델을 골라주세요.")
+    with st.expander("➕ 새 에이전트 채용 (무기 지급)", expanded=True):
+        st.caption("이름, 직무, 모델, 그리고 사용할 툴을 세팅하세요.")
         
-        # 기본 정보
-        new_name = st.text_input("이름 (예: 스티브)")
-        new_role = st.text_input("직무 (예: 시니어 DB 아키텍트)")
+        new_name = st.text_input("이름 (예: 제이콥)")
+        new_role = st.text_input("직무 (예: 프로젝트 매니저)")
         
         st.divider()
-        
-        # 맞춤형 모델 선택
         sel_groq = st.selectbox("🧠 사고력 뇌 (Groq)", groq_models)
-        st.info(get_model_desc(sel_groq)) # 선택한 모델 특성 즉시 보여주기
-        
         sel_gemini = st.selectbox("👐 실무용 손발 (Gemini)", gemini_models)
-        st.info(get_model_desc(sel_gemini))
         
-        if st.button("채용 확정 🚀"):
+        st.divider()
+        # 📌 핵심: 에이전트에게 쥐여줄 무기(API) 선택!
+        st.markdown("**🛠️ 권한 부여 (API Tools)**")
+        selected_tools = st.multiselect("이 에이전트가 사용할 수 있는 툴을 고르세요.", AVAILABLE_TOOLS)
+        
+        if st.button("채용 및 무기 지급 🚀"):
             if new_name and new_role:
-                # 1. 뼈대 생성
                 new_agent = LobsterAgent(
                     groq_key=secrets["GROQ"], gemini_key=secrets["GEMINI"], name=new_name, role=new_role
                 )
-                # 2. 선택한 두뇌와 손발을 에이전트 몸에 이식! (이게 핵심입니다)
                 new_agent.model_groq = sel_groq
                 new_agent.model_gemini = sel_gemini
+                new_agent.tools = selected_tools # 고른 무기를 에이전트 객체에 저장!
                 
-                # 3. 인력소 대기실에 등록
                 st.session_state.agent_roster[f"{new_name} ({new_role})"] = new_agent
-                st.success(f"🎉 '{new_name}' 채용 완료! 이제 대화 채널이나 회의실에 초대하세요.")
+                st.success(f"🎉 '{new_name}' 채용 완료! {len(selected_tools)}개의 무기를 장착했습니다.")
             else:
                 st.warning("이름과 직무를 모두 입력해주세요!")
 
@@ -91,14 +95,16 @@ with tab1:
     selected_agent_key = st.selectbox("누구에게 지시할까요?", list(st.session_state.agent_roster.keys()), key="1on1_select")
     active_lobster = st.session_state.agent_roster[selected_agent_key]
 
-    # 현재 선택된 에이전트의 스펙(장착된 모델) 보여주기
-    st.caption(f"🤖 **장착 스펙** | 🧠 뇌: `{active_lobster.model_groq}` / 👐 손발: `{active_lobster.model_gemini}`")
+    # 현재 선택된 에이전트의 스펙과 '장착된 무기' 보여주기!
+    st.caption(f"🤖 **스펙** | 🧠 뇌: `{active_lobster.model_groq}` / 👐 손발: `{active_lobster.model_gemini}`")
+    tools_str = ", ".join(active_lobster.tools) if hasattr(active_lobster, 'tools') and active_lobster.tools else "맨손 (툴 없음)"
+    st.caption(f"🛠️ **장착 무기** | {tools_str}")
 
     uploaded_file = st.file_uploader(f"📁 {active_lobster.name}에게 분석할 데이터 전달", type=['txt', 'csv', 'md'], key="1on1_file")
     file_data = ""
     if uploaded_file:
         file_data = uploaded_file.getvalue().decode("utf-8")
-        st.success(f"데이터 전달 완료! {active_lobster.name}가 읽을 준비를 마쳤습니다.")
+        st.success("데이터 전달 완료!")
 
     if "messages" not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": "1:1 지시를 내려주세요! 🦞"}]
@@ -115,19 +121,23 @@ with tab1:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner(f"{active_lobster.name}가 전용 뇌({active_lobster.model_groq})를 굴리는 중... 🧠"):
+            with st.spinner(f"{active_lobster.name}가 뇌({active_lobster.model_groq})와 무기({len(active_lobster.tools if hasattr(active_lobster, 'tools') else [])}개)를 굴리는 중... 🧠"):
                 history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[:-1]]
+                
+                # 📌 랍스타의 뇌에 자기가 무슨 무기를 들고 있는지 주입!
+                system_injection = f"\n[현재 장착 중인 API 툴: {tools_str}]\n너는 이 툴들을 사용하여 업무를 자동화할 수 있는 권한이 있다. 계획을 세울 때 네가 가진 툴을 적극적으로 활용해서 세워라."
+                modified_prompt = full_prompt + system_injection
+                
                 try:
-                    # 해당 에이전트의 '고유 모델'을 꺼내서 사용합니다!
                     action_type, text1, text2 = active_lobster.think_and_act(
-                        full_prompt, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini
+                        modified_prompt, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini
                     )
                     if action_type == "chat":
                         st.markdown(text1)
                         report_to_discord(secrets["DISCORD"], f"💬 {active_lobster.name}의 대답", text1, 3447003)
                         final_memory = text1
                     elif action_type == "task":
-                        st.markdown(f"**[계획 수립]**\n{text1}\n\n*(전용 손발인 {active_lobster.model_gemini}로 실무 작업 진행 중...)*")
+                        st.markdown(f"**[계획 수립 및 툴 활용]**\n{text1}\n\n*(전용 손발과 툴을 이용해 실무 작업 진행 중...)*")
                         report_to_discord(secrets["DISCORD"], f"🧠 {active_lobster.name} 기획", text1, 15105570)
                         report_to_discord(secrets["DISCORD"], f"✅ {active_lobster.name} 결과", text2[:4000], 3066993)
                         st.success("✅ 실무 작업 완료! 디스코드 확인.")
@@ -139,7 +149,7 @@ with tab1:
             st.session_state.messages.append({"role": "assistant", "content": final_memory})
 
 # ------------------------------------------
-# [탭 2] 🔥 에이전트 그룹 회의실
+# [탭 2] 🔥 에이전트 그룹 회의실 (이전과 동일하여 생략, 기존 코드 유지!)
 # ------------------------------------------
 with tab2:
     st.subheader("토론 참석자 및 룰 세팅")
