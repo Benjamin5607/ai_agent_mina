@@ -28,7 +28,7 @@ jobs:
   run-lobster:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # ★ 핵심: 랍스타가 기억(파일)을 저장할 수 있게 권한 부여
+      contents: write # 랍스타가 기억(일기장)을 저장할 수 있게 허락하는 권한
 
     steps:
       - name: Checkout code
@@ -47,13 +47,14 @@ jobs:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          USER_MESSAGE: ${{ github.event.inputs.user_message }}
-          LOBSTER_MODEL: ${{ github.event.inputs.model }}
-          GEMINI_MODEL: ${{ github.event.inputs.gemini_model }}
-          LOBSTER_TASK: ${{ github.event.inputs.task }}
+          # 대시보드에서 보낸 데이터를 환경변수로 연결
+          USER_MESSAGE: ${{ inputs.user_message }}
+          LOBSTER_MODEL: ${{ inputs.model }}
+          GEMINI_MODEL: ${{ inputs.gemini_model }}
+          LOBSTER_TASK: ${{ inputs.task }}
+          EXTRA_KEYS_JSON: ${{ inputs.extra_keys }}
         run: python main.py
 
-      # ★ 파이썬이 끝난 후 만들어진 memory.json을 깃허브에 영구 저장
       - name: Save Lobster Memory
         run: |
           git config --global user.name "Lobster-Memory"
