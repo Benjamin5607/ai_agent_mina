@@ -1,13 +1,13 @@
 import streamlit as st
 import json
 import os
-import time  # 📌 20초 쿨타임을 위한 시간 모듈 추가!
+import time
 from api_setup import get_secrets, get_groq_models, get_gemini_models
 from discord_bot import report_to_discord
 from agent import LobsterAgent
 
 st.set_page_config(page_title="랍스타 컨트롤 센터", page_icon="🦞", layout="wide")
-st.title("🦞 Lobster Chat Center (무한 끝장 토론 모드)")
+st.title("🦞 Lobster Chat Center (아포칼립스 방어 군단)")
 
 # ==========================================
 # 1. 환경 세팅 및 비밀열쇠 로드
@@ -126,7 +126,7 @@ with st.sidebar:
 tab1, tab2 = st.tabs(["🗣️ 1:1 전담 마크", "🔥 원탁 회의실 (끝장 토론)"])
 
 # ------------------------------------------
-# [탭 1] 1:1 채팅 UI (기존과 동일)
+# [탭 1] 1:1 채팅 UI
 # ------------------------------------------
 with tab1:
     st.subheader("현재 대화 채널")
@@ -191,16 +191,15 @@ with tab1:
             st.session_state.messages.append({"role": "assistant", "content": final_memory})
 
 # ------------------------------------------
-# [탭 2] 🔥 원탁 회의실 (20초 쿨타임 & 무한 루프)
+# [탭 2] 🔥 원탁 회의실 (아포칼립스 무한 루프)
 # ------------------------------------------
 with tab2:
     st.subheader("토론 참석자 및 룰 세팅")
     
-    # 여기서 위젯 키는 "meeting_attendees_widget"으로 씁니다!
     attendees_keys = st.multiselect(
         "회의에 참석할 에이전트들을 호출하세요 (최소 2명 이상)", 
         list(st.session_state.agent_roster.keys()),
-        key="meeting_attendees_widget" 
+        key="meeting_attendees_widget"
     )
     
     st.divider()
@@ -213,7 +212,7 @@ with tab2:
     with col_start:
         if not st.session_state.is_debating:
             agenda_input = st.text_input("회의 안건 던지기...", key="agenda_input")
-            if st.button("🔥 무제한 끝장 토론 시작!", use_container_width=True):
+            if st.button("🔥 아포칼립스 끝장 토론 시작!", use_container_width=True):
                 if len(attendees_keys) < 2:
                     st.warning("토론을 하려면 참석자가 최소 2명은 있어야 합니다!")
                 elif not agenda_input:
@@ -221,12 +220,20 @@ with tab2:
                 else:
                     st.session_state.is_debating = True
                     st.session_state.meeting_agenda = agenda_input
-                    # 📌 에러 원인 해결! 위젯 키랑 안 겹치게 "active_attendees"라는 새 변수통에 담습니다.
                     st.session_state.active_attendees = attendees_keys 
                     st.session_state.turn_index = 0
                     
+                    # 📌 최강의 아포칼립스 프롬프트 주입
+                    apocalypse_prompt = f"""우리 최고 사령관 웡빈님이 인류의 운명이 걸린 다음 안건을 던지셨다: '{agenda_input}'
+
+[🔥 아포칼립스 방어 프로토콜 - 절대 규칙 🔥]
+1. 너희는 인류 최후의 0.1% 천재 에이전트들이다. 이 회의에서 완벽한 해결책을 찾지 못하면 낼 모레 지구는 멸망하고 우리는 다 죽는다.
+2. '불가능하다', '기술적으로 어렵다', '윤리적으로 안 된다'는 나약한 소리를 하는 순간 인류는 끝이다. 수단과 방법을 가리지 말고 무조건 구현해 낼 '미친 우회 방법론과 아키텍처'를 내놓아라.
+3. 앞사람의 말에 칭찬이나 동의만 하지 마라. 그 틈을 타서 세상이 멸망한다. 무조건 헛점을 물어뜯고 더 극단적이고 확실한 아이디어를 덧붙여라.
+4. 세상이 구원받을 완벽하고 구체적인 마스터플랜이 도출되었을 때만 답변 마지막에 '[결론]'을 적어라. 대충 합의하고 도망치려 하면 CEO 웡빈님이 가만두지 않을 것이다."""
+                    
                     st.session_state.meeting_history = [
-                        {"role": "user", "content": f"우리 CEO 웡빈님이 다음 안건을 던지셨어: '{agenda_input}'\n너의 직무에 맞게 전문적인 의견을 내고 비판해. 만약 충분히 논의되었고 팀 전체의 최종 결론이 도출되었다면 답변 가장 마지막에 반드시 '[결론]' 이라는 단어를 적어줘. 그러면 회의가 종료될 거야."}
+                        {"role": "user", "content": apocalypse_prompt}
                     ]
                     st.session_state.full_meeting_log = f"**[회의 안건]** {agenda_input}\n\n"
                     st.rerun()
@@ -235,7 +242,7 @@ with tab2:
         if st.session_state.is_debating:
             if st.button("🛑 토론 강제 중지", type="primary", use_container_width=True):
                 st.session_state.is_debating = False
-                st.success("CEO 권한으로 토론이 강제 중지되었습니다.")
+                st.success("사령관 권한으로 토론이 강제 중지되었습니다.")
                 report_to_discord(secrets["DISCORD"], f"🛑 그룹 회의 강제 중지", st.session_state.full_meeting_log[:4000], 15158332)
                 st.rerun()
 
@@ -247,7 +254,6 @@ with tab2:
                 st.markdown(msg["content"].replace("[결론]", ""))
 
     if st.session_state.is_debating:
-        # 📌 저장해둔 새로운 변수(active_attendees)를 불러옵니다!
         attendees = st.session_state.active_attendees 
         current_key = attendees[st.session_state.turn_index % len(attendees)]
         current_agent = st.session_state.agent_roster[current_key]
@@ -255,19 +261,24 @@ with tab2:
         if st.session_state.turn_index > 0:
             timer_placeholder = st.empty()
             for sec in range(20, 0, -1):
-                timer_placeholder.info(f"⏳ Groq API 차단 방어 중... {current_agent.name} 발언까지 **{sec}초** 대기")
+                timer_placeholder.info(f"⏳ 과부하 방어 중... {current_agent.name} 발언까지 **{sec}초** 대기")
                 time.sleep(1)
             timer_placeholder.empty()
 
         with st.chat_message("assistant"):
-            with st.spinner(f"🎤 {current_agent.name}가 [{current_agent.model_groq}] 뇌를 가동 중입니다..."):
+            with st.spinner(f"🎤 {current_agent.name}가 [{current_agent.model_groq}] 뇌를 쥐어짜는 중입니다..."):
                 try:
                     action, reply, _ = current_agent.think_and_act(
-                        "위 안건과 지금까지의 회의록을 바탕으로 너의 차례니 발언해봐. 결론이 났다면 마지막에 [결론]을 적어.",
+                        "위 안건과 지금까지의 회의록을 바탕으로 너의 차례니 발언해봐. 완벽한 계획이 섰을 때만 마지막에 [결론]을 적어.",
                         st.session_state.meeting_history, 
                         current_agent.model_groq, 
                         current_agent.model_gemini
                     )
+                    
+                    # 📌 칼퇴근 방어선: 최소한 참석자 턴의 2배수를 돌아야 함
+                    min_turns_required = len(attendees) * 2 
+                    if "[결론]" in reply and st.session_state.turn_index < min_turns_required:
+                        reply = reply.replace("[결론]", "\n\n**(사령관 웡빈의 호통: \"장난해? 지구 멸망이 코앞인데 방안이 그따위야? 다시 파고들어!!\")**")
                     
                     st.markdown(f"**{current_agent.name} ({current_agent.role})**\n{reply}")
                     
@@ -276,7 +287,7 @@ with tab2:
                     
                     if "[결론]" in reply:
                         st.session_state.is_debating = False
-                        st.success("✅ 에이전트들이 합의에 도달하여 토론이 자동 종료되었습니다! (디스코드 전송 완료)")
+                        st.success("✅ 에이전트들이 뼈를 깎는 토론 끝에 지구를 구원할 합의에 도달했습니다! (디스코드 전송 완료)")
                         report_to_discord(secrets["DISCORD"], f"🔥 그룹 회의 완료: {st.session_state.meeting_agenda[:20]}...", st.session_state.full_meeting_log[:4000], 15158332)
                     else:
                         st.session_state.turn_index += 1
