@@ -1,12 +1,23 @@
-name: Lobster Agent Heartbeat
+name: Lobster Agent Trigger
 
 on:
-  schedule:
-    - cron: '0 * * * *' # 매시간 정각에 랍스타가 깨어남
-  workflow_dispatch: # 수동으로도 실행 가능
+  workflow_dispatch:
+    inputs:
+      model:
+        description: 'Groq Model to use'
+        required: true
+        default: 'llama-3.3-70b-versatile'
+      task:
+        description: 'Assigned Task Type'
+        required: true
+        default: 'coding'
+      extra_keys:
+        description: 'Extra API Keys (JSON from LocalStorage)'
+        required: false
+        default: '{}'
 
 jobs:
-  run-agent:
+  run-lobster:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -15,16 +26,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: '3.10'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run Lobster Agent
+      - name: Execute Lobster Brain
         env:
+          # GitHub Secrets에서 가져오는 핵심 인증키
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
-          PHONE_NUMBER_ID: ${{ secrets.PHONE_NUMBER_ID }}
-          RECIPIENT_PHONE: ${{ secrets.RECIPIENT_PHONE }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # 대시보드(웹)에서 넘어온 변수들
+          LOBSTER_MODEL: ${{ github.event.inputs.model }}
+          LOBSTER_TASK: ${{ github.event.inputs.task }}
+          EXTRA_KEYS_JSON: ${{ github.event.inputs.extra_keys }}
         run: python main.py
