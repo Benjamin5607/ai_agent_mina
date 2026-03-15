@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "안녕?"
+  },
+  {
+    "role": "assistant",
+    "content": "[CHAT]ㅎ 안녕! 오늘도 괜찮니?"
+  }
+]
