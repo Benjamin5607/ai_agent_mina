@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>🦞 랍스타 군단: 가난한 자들의 치트키</title>
+    <style>
+        body { font-family: 'Inter', sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
+        .card { background: #2a2a2a; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        select, input, textarea { width: 100%; padding: 10px; margin: 10px 0; border-radius: 6px; border: 1px solid #444; background: #333; color: white; }
+        button { background: #ff4757; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #ff6b81; }
+        .api-list { font-size: 0.9em; color: #aaa; margin-bottom: 15px; }
+        .model-desc { font-size: 0.85em; color: #ffa502; margin-top: -5px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>🦞 Lobster Control Center</h1>
+
+    <div class="card">
+        <h3>1. 뇌(Groq Model) 선택</h3>
+        <select id="modelSelect" onchange="updateModelDesc()">
+            <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Versatile)</option>
+            <option value="llama-3.1-8b-instant">Llama 3.1 8B (Instant)</option>
+            <option value="mixtral-8x7b-32768">Mixtral 8x7B (MoE)</option>
+        </select>
+        <div id="modelDesc" class="model-desc">가장 강력하고 범용적인 추론 능력을 갖춘 모델입니다.</div>
+    </div>
+
+    <div class="card">
+        <h3>2. 랍스타 직무 및 무료 도구 설정</h3>
+        <select id="taskSelect" onchange="updateTaskFields()">
+            <option value="coding">Coding / Developer</option>
+            <option value="contents">Contents Creator</option>
+            <option value="data">Data Analysis / Documentation</option>
+            <option value="pm">Project Management</option>
+        </select>
+
+        <div id="apiFields">
+            </div>
+    </div>
+
+    <div class="card">
+        <button onclick="saveAndRun()">설정 저장 및 랍스타 깨우기</button>
+        <p style="font-size: 0.8em; color: #888;">* 모든 API 정보는 브라우저의 LocalStorage에 암호화 없이 저장됩니다. 본인 기기에서만 사용하세요.</p>
+    </div>
+
+    <script>
+        // 모델별 강점 리스트
+        const modelInfo = {
+            "llama-3.3-70b-versatile": "강점: 복잡한 논리, 긴 문맥 이해, 가장 똑똑한 판단 필요 시 추천",
+            "llama-3.1-8b-instant": "강점: 미친 속도, 단순 반복 업무, 실시간 채팅 대응 시 추천",
+            "mixtral-8x7b-32768": "강점: 다국어 처리, 창의적 글쓰기, 오픈소스 최적화 모델"
+        };
+
+        // 직무별 무료 API 리스트 (신용카드 X)
+        const taskApis = {
+            "coding": { desc: "GitHub API(저장소 제어), Weather API(날씨 연동), NewsAPI(무료 티어)", fields: ["GITHUB_TOKEN", "NEWS_API_KEY"] },
+            "contents": { desc: "Pixabay API(무료 이미지), YouTube Data API(영상 검색), Pexels API", fields: ["YOUTUBE_API_KEY", "PIXABAY_KEY"] },
+            "data": { desc: "CoinGecko(코인 시세), OpenWeather, Google Sheets(Gemini 연동)", fields: ["OPENWEATHER_KEY", "SHEETS_ID"] },
+            "pm": { desc: "Trello API(카드 관리), Notion API(문서화), Discord Webhook(보고)", fields: ["NOTION_TOKEN", "TRELLO_KEY"] }
+        };
+
+        function updateModelDesc() {
+            const val = document.getElementById('modelSelect').value;
+            document.getElementById('modelDesc').innerText = modelInfo[val];
+        }
+
+        function updateTaskFields() {
+            const task = document.getElementById('taskSelect').value;
+            const container = document.getElementById('apiFields');
+            const info = taskApis[task];
+            
+            let html = `<div class="api-list">💡 추천 무료 API: ${info.desc}</div>`;
+            info.fields.forEach(field => {
+                const savedVal = localStorage.getItem(field) || "";
+                html += `<label>${field}</label><input type="password" id="${field}" value="${savedVal}" placeholder="${field}를 입력하세요">`;
+            });
+            container.innerHTML = html;
+        }
+
+        function saveAndRun() {
+            // 1. 모델 저장
+            localStorage.setItem("SELECTED_MODEL", document.getElementById('modelSelect').value);
+            localStorage.setItem("SELECTED_TASK", document.getElementById('taskSelect').value);
+
+            // 2. 현재 화면의 모든 Input 값을 로컬스토리지에 저장
+            const inputs = document.querySelectorAll('#apiFields input');
+            inputs.forEach(input => {
+                localStorage.setItem(input.id, input.value);
+            });
+
+            alert("로컬스토리지에 저장 완료! 이제 이 설정으로 랍스타가 작업을 시작합니다. ㅋㅋ");
+            console.log("LocalStorage Status:", localStorage);
+        }
+
+        // 초기 실행
+        updateTaskFields();
+    </script>
+</body>
+</html>
