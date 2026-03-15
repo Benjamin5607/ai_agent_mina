@@ -3,18 +3,22 @@ name: Lobster Agent Trigger
 on:
   workflow_dispatch:
     inputs:
+      user_message:
+        description: '사용자 메시지 (대화 또는 지시)'
+        required: true
+        default: '안녕?'
       model:
-        description: 'Groq Model to use'
+        description: 'Groq Model'
         required: true
         default: 'llama-3.3-70b-versatile'
-      task:
-        description: 'Assigned Task Type'
+      gemini_model:
+        description: 'Gemini Model'
         required: true
-        default: 'coding'
-      extra_keys:
-        description: 'Extra API Keys (JSON from LocalStorage)'
-        required: false
-        default: '{}'
+        default: 'models/gemini-1.5-flash'
+      task:
+        description: 'Assigned Task'
+        required: true
+        default: 'ops_risk'
 
 jobs:
   run-lobster:
@@ -33,12 +37,11 @@ jobs:
 
       - name: Execute Lobster Brain
         env:
-          # GitHub Secrets에서 가져오는 핵심 인증키
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          # 대시보드(웹)에서 넘어온 변수들
+          USER_MESSAGE: ${{ github.event.inputs.user_message }}
           LOBSTER_MODEL: ${{ github.event.inputs.model }}
+          GEMINI_MODEL: ${{ github.event.inputs.gemini_model }}
           LOBSTER_TASK: ${{ github.event.inputs.task }}
-          EXTRA_KEYS_JSON: ${{ github.event.inputs.extra_keys }}
         run: python main.py
