@@ -18,23 +18,31 @@ def use_web_crawler(query, api_key):
         return f"웹 검색 중 시스템 에러: {e}"
 
 def use_notion_api(title, content, api_key, database_id):
-    """📝 Notion API"""
+    """📝 Notion API (SSOT 문단 블록 파싱 적용)"""
     if not api_key or not database_id: return "🚨 에러: NOTION_API_KEY 또는 NOTION_DATABASE_ID가 없습니다."
     url = "https://api.notion.com/v1/pages"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json", "Notion-Version": "2022-06-28"}
     
-    # 텍스트가 너무 길면 노션 블록 제한(2000자)에 걸리므로 자릅니다.
-    safe_content = content[:1900] + "\n...(중략)" if len(content) > 1900 else content
-    
+    # 📌 핵심: 긴 글을 문단 단위로 잘라서 노션의 개별 '블록'으로 만듭니다. (가독성 폭발)
+    blocks = []
+    for chunk in content.split("\n\n"):
+        if chunk.strip():
+            blocks.append({
+                "object": "block", 
+                "type": "paragraph", 
+                "paragraph": {"rich_text": [{"text": {"content": chunk.strip()[:1900]}}]}
+            })
+            
     payload = {
         "parent": {"database_id": database_id},
         "properties": {"title": {"title": [{"text": {"content": title}}]}},
-        "children": [{"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"text": {"content": safe_content}}]}}]
+        "children": blocks[:100] # 노션 API는 한 번에 100개 블록까지만 허용
     }
+    
     try:
         res = requests.post(url, headers=headers, json=payload)
         if res.status_code == 200:
-            return f"✅ [노션 작성 완료] 성공적으로 노션에 문서가 업로드되었습니다! 링크: {res.json().get('url')}"
+            return f"✅ [노션 SSOT 작성 완료] 깔끔하게 구조화된 문서가 업로드되었습니다! 링크: {res.json().get('url')}"
         return f"노션 작성 실패: {res.text}"
     except Exception as e:
         return f"노션 API 에러: {e}"
