@@ -3,17 +3,14 @@ import json
 import os
 import time
 import google.generativeai as genai
-from api_setup import get_secrets, get_groq_models, get_gemini_models
+# 📌 변경됨: get_notion_databases 임포트 추가!
+from api_setup import get_secrets, get_groq_models, get_gemini_models, get_notion_databases
 from discord_bot import report_to_discord
 from agent import LobsterAgent
 
 st.set_page_config(page_title="Lobster Chat Center", page_icon="🦞", layout="wide")
 
-# ==========================================
-# 1. 환경 세팅 및 실시간 모델 리스트 로드
-# ==========================================
 secrets = get_secrets()
-
 groq_models = get_groq_models(secrets["GROQ"])
 gemini_models = get_gemini_models(secrets["GEMINI"])
 default_groq = groq_models[0] if groq_models else "llama3-8b-8192"
@@ -40,6 +37,7 @@ def load_roster():
                 agent.model_groq = info.get("model_groq", default_groq)
                 agent.model_gemini = info.get("model_gemini", default_gemini)
                 agent.tools = info.get("tools", [])
+                agent.notion_db_id = info.get("notion_db_id", None) # 📌 파일에서 불러올 때 DB ID도 복구!
                 roster[key] = agent
             return roster
         except: pass
@@ -52,7 +50,8 @@ def save_roster(roster):
             "name": agent.name, "role": agent.role,
             "model_groq": getattr(agent, "model_groq", default_groq),
             "model_gemini": getattr(agent, "model_gemini", default_gemini),
-            "tools": getattr(agent, "tools", [])
+            "tools": getattr(agent, "tools", []),
+            "notion_db_id": getattr(agent, "notion_db_id", None) # 📌 파일에 DB ID 저장!
         }
     with open(ROSTER_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -67,20 +66,16 @@ if "agent_roster" not in st.session_state:
         save_roster(saved_roster)
     st.session_state.agent_roster = saved_roster
 
-# ==========================================
-# 2. 글로벌 언어 설정 & UI 번역 함수
-# ==========================================
 with st.sidebar:
     st.header("🌐 Language / 공용어 설정")
     app_lang = st.radio("UI & Agent Language", ["한국어", "English"], horizontal=True, label_visibility="collapsed")
 
-def t(ko, en):
-    return ko if app_lang == "한국어" else en
+def t(ko, en): return ko if app_lang == "한국어" else en
 
 st.title(t("🦞 랍스타 컨트롤 센터 (아포칼립스 군단)", "🦞 Lobster Chat Center (Apocalypse Legion)"))
 
 # ==========================================
-# 3. 사이드바 (인력소 및 서기 설정 UI)
+# 3. 사이드바 (요원 채용 및 노션 DB 선택 UI)
 # ==========================================
 with st.sidebar:
     st.divider()
@@ -97,12 +92,24 @@ with st.sidebar:
         sel_gemini = st.selectbox(t("👐 실무용 손발 (Gemini)", "👐 Hands (Gemini)"), gemini_models)
         selected_tools = st.multiselect(t("🛠️ 툴 장착", "🛠️ Assign Tools"), AVAILABLE_TOOLS)
         
+        # 📌 핵심: 노션 API를 선택하면 DB 선택창이 스르륵 뜹니다!
+        selected_notion_db_id = None
+        if "📝 Notion API" in selected_tools:
+            notion_dbs = get_notion_databases(st.secrets.get("NOTION_API_KEY", ""))
+            if notion_dbs:
+                selected_db_name = st.selectbox(t("📂 담당할 노션 DB 선택", "📂 Select Notion DB"), list(notion_dbs.keys()))
+                selected_notion_db_id = notion_dbs[selected_db_name] # 선택한 제목 뒤에 숨겨진 ID 값을 가져옴
+            else:
+                st.warning(t("⚠️ 봇이 초대된 노션 DB가 없습니다. 먼저 노션 페이지 연결 메뉴에서 봇을 초대하세요.", "⚠️ No Notion DB found. Invite the bot in Notion first."))
+        
         if st.button(t("채용 및 명부 등록 🚀", "Hire & Save 🚀")):
             if new_name and new_role:
                 new_agent = LobsterAgent(secrets["GROQ"], secrets["GEMINI"], new_name, new_role)
                 new_agent.model_groq = sel_groq
                 new_agent.model_gemini = sel_gemini
                 new_agent.tools = selected_tools
+                new_agent.notion_db_id = selected_notion_db_id # 📌 에이전트에게 DB 아이디 이식!
+                
                 st.session_state.agent_roster[f"{new_name} ({new_role})"] = new_agent
                 save_roster(st.session_state.agent_roster)
                 st.success(t(f"🎉 '{new_name}' 채용 완료!", f"🎉 '{new_name}' Hired!"))
@@ -110,28 +117,17 @@ with st.sidebar:
                 st.rerun()
 
 # ==========================================
-# 4. 메인 화면: 탭 분리
+# 4. 메인 화면: 탭 분리 (기존과 동일하므로 전체 복붙)
 # ==========================================
 tab1_name = t("💬 1:1 개인 업무 지시 (DM)", "💬 1:1 Direct Messages (DM)")
 tab2_name = t("🔥 원탁 회의실 (끝장 토론)", "🔥 War Room (Endless Debate)")
 tab1, tab2 = st.tabs([tab1_name, tab2_name])
 
-# ------------------------------------------
-# [탭 1] 1:1 개인 업무 지시 (DM 방 독립 시스템)
-# ------------------------------------------
 with tab1:
-    # 📌 UI 구조 개선: 왼쪽은 연락처(에이전트 목록), 오른쪽은 채팅창
     contact_col, chat_col = st.columns([1, 3])
-    
     with contact_col:
         st.subheader(t("👥 내 요원 목록", "👥 My Agents"))
-        # 라디오 버튼을 사용해 슬랙의 채널 목록처럼 클릭하기 쉽게 만듭니다.
-        selected_agent_key = st.radio(
-            t("업무를 지시할 요원 선택", "Select agent to assign task"), 
-            list(st.session_state.agent_roster.keys()),
-            label_visibility="collapsed"
-        )
-        
+        selected_agent_key = st.radio(t("업무를 지시할 요원 선택", "Select agent to assign task"), list(st.session_state.agent_roster.keys()), label_visibility="collapsed")
         active_lobster = st.session_state.agent_roster[selected_agent_key]
         
         st.divider()
@@ -147,37 +143,26 @@ with tab1:
 
     with chat_col:
         st.subheader(f"💬 {active_lobster.name} {t('요원과의 1:1 DM', 'Direct Message')}")
-        
-        # 📌 핵심: 선택된 에이전트 고유의 채팅 메모리 키 생성 (독립된 방)
         chat_memory_key = f"dm_history_{selected_agent_key}"
-        
-        # 이 에이전트와의 첫 대화라면 방을 새로 파줍니다.
         if chat_memory_key not in st.session_state:
-            st.session_state[chat_memory_key] = [
-                {"role": "assistant", "content": t(f"충성! 사령관님. {active_lobster.role} 담당 {active_lobster.name} 대기 중입니다. 지시를 내려주십시오! 🫡", f"Yes, Commander! {active_lobster.name} ({active_lobster.role}) awaiting orders! 🫡")}
-            ]
+            st.session_state[chat_memory_key] = [{"role": "assistant", "content": t(f"충성! 사령관님. {active_lobster.role} 담당 {active_lobster.name} 대기 중입니다. 지시를 내려주십시오! 🫡", f"Yes, Commander! {active_lobster.name} ({active_lobster.role}) awaiting orders! 🫡")}]
 
         uploaded_file = st.file_uploader(t(f"📁 분석할 데이터 전달", f"📁 Upload File for {active_lobster.name}"), type=['txt', 'csv', 'md'], key=f"file_{selected_agent_key}")
         file_data = uploaded_file.getvalue().decode("utf-8") if uploaded_file else ""
 
-        # 📌 이 에이전트만의 고유 채팅 기록을 렌더링
         for msg in st.session_state[chat_memory_key]:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
         if prompt := st.chat_input(t(f"[{active_lobster.name}]에게 지시하기...", f"Command [{active_lobster.name}]..."), key=f"input_{selected_agent_key}"):
             full_prompt = prompt if not file_data else f"{prompt}\n\n[Data:\n{file_data}\n]"
-            
-            # 📌 대화를 공용 메모리가 아닌 '이 에이전트 전용 메모리'에 저장
             st.session_state[chat_memory_key].append({"role": "user", "content": prompt})
             with st.chat_message("user"): st.markdown(prompt)
 
             with st.chat_message("assistant"):
                 with st.spinner(t("뇌와 무기를 굴리는 중... 🧠🛠️", "Thinking & Executing... 🧠🛠️")):
-                    # 이 에이전트의 최근 10개 대화만 맥락으로 가져옴
                     history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state[chat_memory_key][-10:]]
                     system_injection = f"\n[Tools: {tools_str}]\n[Rule] All your responses must be strictly in '{app_lang}'."
-                    
                     try:
                         action_type, text1, text2 = active_lobster.think_and_act(full_prompt + system_injection, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini)
                         st.markdown(text1)
@@ -185,13 +170,8 @@ with tab1:
                         final_memory = text1
                     except Exception as e:
                         final_memory = f"Error: {e}"
-                
-                # 결과도 이 에이전트 전용 메모리에 저장
                 st.session_state[chat_memory_key].append({"role": "assistant", "content": final_memory})
 
-# ------------------------------------------
-# [탭 2] 🔥 원탁 회의실 (이하 기존 코드와 완벽 동일!)
-# ------------------------------------------
 with tab2:
     st.subheader(t("토론 참석자 세팅", "Select Attendees"))
     attendees_keys = st.multiselect(t("회의에 참석할 에이전트들을 호출하세요", "Call agents to the meeting"), list(st.session_state.agent_roster.keys()), key="meeting_attendees_widget", label_visibility="collapsed")
@@ -298,11 +278,9 @@ with tab2:
                                 다음 양식에 맞춰 완벽한 마크다운 형식의 최종 회의 결과 보고서를 작성해:
                                 1. 📌 미팅 요약 (Meeting Summary)
                                 2. 💡 중요 내용 (Key Takeaways)
-                                3. 📅 액션 아이템 (Action Items - 타임라인 및 담당 에이전트 명시)
+                                3. 📅 액션 아이템 (Action Items)
                                 4. 🎯 기대 효과 (Expected Results)
                                 5. 🤖 각 에이전트별 개인 업무 AI 프롬프트 (Individual AI Prompts)
-                                   - 회의에 참여한 에이전트들이 1:1 대화방에서 바로 복사해서 붙여넣을 수 있는 명령어 형태로 정리해라.
-                                   - 에이전트가 어떤 툴(Notion API 등)을 사용해야 하는지 프롬프트 안에 명시해라.
                                 """
                                 final_report = summary_model.generate_content(report_prompt).text
                                 st.session_state.final_report = final_report
