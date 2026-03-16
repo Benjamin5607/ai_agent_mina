@@ -3,7 +3,6 @@ import json
 import os
 import time
 import google.generativeai as genai
-# 📌 변경됨: get_notion_databases 임포트 추가!
 from api_setup import get_secrets, get_groq_models, get_gemini_models, get_notion_databases
 from discord_bot import report_to_discord
 from agent import LobsterAgent
@@ -37,7 +36,7 @@ def load_roster():
                 agent.model_groq = info.get("model_groq", default_groq)
                 agent.model_gemini = info.get("model_gemini", default_gemini)
                 agent.tools = info.get("tools", [])
-                agent.notion_db_id = info.get("notion_db_id", None) # 📌 파일에서 불러올 때 DB ID도 복구!
+                agent.notion_db_id = info.get("notion_db_id", None)
                 roster[key] = agent
             return roster
         except: pass
@@ -51,7 +50,7 @@ def save_roster(roster):
             "model_groq": getattr(agent, "model_groq", default_groq),
             "model_gemini": getattr(agent, "model_gemini", default_gemini),
             "tools": getattr(agent, "tools", []),
-            "notion_db_id": getattr(agent, "notion_db_id", None) # 📌 파일에 DB ID 저장!
+            "notion_db_id": getattr(agent, "notion_db_id", None)
         }
     with open(ROSTER_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -92,13 +91,12 @@ with st.sidebar:
         sel_gemini = st.selectbox(t("👐 실무용 손발 (Gemini)", "👐 Hands (Gemini)"), gemini_models)
         selected_tools = st.multiselect(t("🛠️ 툴 장착", "🛠️ Assign Tools"), AVAILABLE_TOOLS)
         
-        # 📌 핵심: 노션 API를 선택하면 DB 선택창이 스르륵 뜹니다!
         selected_notion_db_id = None
         if "📝 Notion API" in selected_tools:
             notion_dbs = get_notion_databases(st.secrets.get("NOTION_API_KEY", ""))
             if notion_dbs:
                 selected_db_name = st.selectbox(t("📂 담당할 노션 DB 선택", "📂 Select Notion DB"), list(notion_dbs.keys()))
-                selected_notion_db_id = notion_dbs[selected_db_name] # 선택한 제목 뒤에 숨겨진 ID 값을 가져옴
+                selected_notion_db_id = notion_dbs[selected_db_name]
             else:
                 st.warning(t("⚠️ 봇이 초대된 노션 DB가 없습니다. 먼저 노션 페이지 연결 메뉴에서 봇을 초대하세요.", "⚠️ No Notion DB found. Invite the bot in Notion first."))
         
@@ -108,7 +106,7 @@ with st.sidebar:
                 new_agent.model_groq = sel_groq
                 new_agent.model_gemini = sel_gemini
                 new_agent.tools = selected_tools
-                new_agent.notion_db_id = selected_notion_db_id # 📌 에이전트에게 DB 아이디 이식!
+                new_agent.notion_db_id = selected_notion_db_id
                 
                 st.session_state.agent_roster[f"{new_name} ({new_role})"] = new_agent
                 save_roster(st.session_state.agent_roster)
@@ -117,7 +115,7 @@ with st.sidebar:
                 st.rerun()
 
 # ==========================================
-# 4. 메인 화면: 탭 분리 (기존과 동일하므로 전체 복붙)
+# 4. 메인 화면: 탭 분리
 # ==========================================
 tab1_name = t("💬 1:1 개인 업무 지시 (DM)", "💬 1:1 Direct Messages (DM)")
 tab2_name = t("🔥 원탁 회의실 (끝장 토론)", "🔥 War Room (Endless Debate)")
@@ -265,22 +263,35 @@ with tab2:
                         st.session_state.is_debating = False
                         st.success(t("✅ 합의 도달! 최종 보고서를 작성합니다...", "✅ Agreement Reached! Generating Final Report..."))
                         
-                        with st.spinner(t("서기(Gemini)가 액션 아이템을 정리 중입니다... 📝", "Gemini is finalizing Action Items... 📝")):
+                        with st.spinner(t("서기(Gemini)가 직무 맞춤형 액션 아이템을 정리 중입니다... 📝", "Gemini is finalizing Role-based Action Items... 📝")):
                             try:
                                 genai.configure(api_key=secrets["GEMINI"])
                                 summary_model = genai.GenerativeModel(secretary_model)
                                 
+                                # 📌 핵심 수정: 참석자들의 "이름"과 "직무(Role)" 정보를 문자열로 예쁘게 조립합니다.
+                                attendees_info_list = [f"- {st.session_state.agent_roster[k].name} (직무/Role: {st.session_state.agent_roster[k].role})" for k in attendees]
+                                attendees_info_str = "\n".join(attendees_info_list)
+                                
+                                # 📌 빡센 룰 추가: "직무에 안 맞는 일 시키면 가만 안 둔다!"
                                 report_prompt = f"""
                                 다음은 방금 완료된 회의의 전체 기록이다. 모든 내용을 반드시 '{app_lang}'로 작성해라.
-                                [안건]: {st.session_state.meeting_agenda}
-                                [전체 회의록]: {st.session_state.full_meeting_log}
                                 
-                                다음 양식에 맞춰 완벽한 마크다운 형식의 최종 회의 결과 보고서를 작성해:
+                                [안건 / Agenda]: {st.session_state.meeting_agenda}
+                                [참여 요원 및 직무 / Attendees & Roles]: 
+                                {attendees_info_str}
+                                
+                                [전체 회의록 / Full Meeting Log]: 
+                                {st.session_state.full_meeting_log}
+                                
+                                다음 양식에 맞춰 완벽한 마크다운 형식의 최종 회의 결과 보고서를 작성해라:
                                 1. 📌 미팅 요약 (Meeting Summary)
                                 2. 💡 중요 내용 (Key Takeaways)
                                 3. 📅 액션 아이템 (Action Items)
+                                   - **[절대 규칙]**: 반드시 위 '[참여 요원 및 직무]'를 확인하고, 각 요원의 '직무(Role)'에 완벽하게 일치하는 업무만 배정할 것! (예: 데이터 분석가에게는 데이터 추출, 기획자에게는 기획서 작성 등)
                                 4. 🎯 기대 효과 (Expected Results)
                                 5. 🤖 각 에이전트별 개인 업무 AI 프롬프트 (Individual AI Prompts)
+                                   - 이 프롬프트 역시 각 요원의 '직무'에 완벽하게 부합하는 전문적인 작업 지시여야 함.
+                                   - 1:1 대화방에서 바로 복사해서 붙여넣을 수 있는 형태(1인칭 명령조)로 작성할 것.
                                 """
                                 final_report = summary_model.generate_content(report_prompt).text
                                 st.session_state.final_report = final_report
