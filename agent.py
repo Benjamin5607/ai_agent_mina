@@ -65,8 +65,29 @@ class LobsterAgent:
         
         if "[TASK]" in response:
             plan = response.replace("[TASK]", "").strip()
+            
+            # 📌 웡빈 사령관의 특별 지시: 직무별 프로페셔널 SSOT 문서화 강제 룰!
+            professional_formatting = ""
+            if "📝 Notion API" in self.tools and ("노션" in plan or "문서" in plan or "보고서" in plan):
+                professional_formatting = f"""
+                [⚠️ 노션 SSOT 문서화 절대 규칙 ⚠️]
+                너는 실리콘밸리 최고 수준의 프로페셔널 '{self.role}'이다. 네가 작성하는 이 문서는 팀의 진실의 원천(SSOT)이 된다.
+                단순한 줄글 작성을 극도로 혐오하며, 너의 직무에 맞는 완벽한 구조화 템플릿을 무조건 적용해라.
+
+                - 직무가 'PM'이나 '기획' 계열이라면: [Executive Summary], [Objective], [Timeline], [RACI/담당자], [Action Items] 구조로 작성해라.
+                - 직무가 '데이터' 계열이라면: [분석 목적], [핵심 지표(KPIs)], [데이터 인사이트 요약], [결론 및 제언] 구조로 작성해라.
+                - 직무가 '마케팅' 계열이라면: [타겟 오디언스], [핵심 메시지], [채널 전략], [예상 ROI] 구조로 작성해라.
+                - 기타 직무: 가독성을 극대화하기 위해 헤더(#), 불릿 포인트(-), 체크리스트를 적극 활용해 가장 논리적으로 작성해라.
+                """
+            
             model = genai.GenerativeModel(gemini_model)
-            execution_prompt = f"사령관 지시: {user_message}\n너의 계획: {plan}\n위 지시를 수행하기 위한 텍스트 결과물을 작성해. 거짓말 금지."
+            execution_prompt = f"""
+            사령관 지시: {user_message}
+            너의 계획: {plan}
+            {professional_formatting}
+            
+            위 지시를 수행하기 위한 텍스트 결과물을 작성해. 거듭 강조하지만 거짓말은 해고 사유다.
+            """
             result_text = model.generate_content(execution_prompt).text
             tool_results = self.execute_tools(plan, result_text, st.secrets)
             return "task", plan, f"{result_text}\n\n---\n**[🛠️ 시스템 무기 실제 실행 로그]**\n{tool_results}"
