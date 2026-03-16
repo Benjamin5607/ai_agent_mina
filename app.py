@@ -13,7 +13,6 @@ secrets = get_secrets()
 groq_models = get_groq_models(secrets["GROQ"])
 gemini_models = get_gemini_models(secrets["GEMINI"])
 default_groq = groq_models[0] if groq_models else "llama3-8b-8192"
-default_gemini = gemini_models[0] if gemini_models else "gemini-pro"
 
 AVAILABLE_TOOLS = [
     "📝 Notion API", "🐙 GitHub API", "💬 Slack API", 
@@ -29,12 +28,9 @@ def load_roster():
                 data = json.load(f)
             roster = {}
             for key, info in data.items():
-                agent = LobsterAgent(
-                    groq_key=secrets["GROQ"], gemini_key=secrets["GEMINI"], 
-                    name=info["name"], role=info["role"]
-                )
+                # 📌 제미나이 키 삭제
+                agent = LobsterAgent(secrets["GROQ"], info["name"], info["role"])
                 agent.model_groq = info.get("model_groq", default_groq)
-                agent.model_gemini = info.get("model_gemini", default_gemini)
                 agent.tools = info.get("tools", [])
                 agent.notion_db_id = info.get("notion_db_id", None)
                 roster[key] = agent
@@ -48,7 +44,6 @@ def save_roster(roster):
         data[key] = {
             "name": agent.name, "role": agent.role,
             "model_groq": getattr(agent, "model_groq", default_groq),
-            "model_gemini": getattr(agent, "model_gemini", default_gemini),
             "tools": getattr(agent, "tools", []),
             "notion_db_id": getattr(agent, "notion_db_id", None)
         }
@@ -58,9 +53,8 @@ def save_roster(roster):
 if "agent_roster" not in st.session_state:
     saved_roster = load_roster()
     if not saved_roster:
-        default_agent = LobsterAgent(secrets["GROQ"], secrets["GEMINI"], "랍스타-01", "만능 비서")
+        default_agent = LobsterAgent(secrets["GROQ"], "랍스타-01", "만능 비서")
         default_agent.model_groq = default_groq
-        default_agent.model_gemini = default_gemini
         saved_roster["랍스타-01 (만능 비서)"] = default_agent
         save_roster(saved_roster)
     st.session_state.agent_roster = saved_roster
@@ -74,12 +68,13 @@ def t(ko, en): return ko if app_lang == "한국어" else en
 st.title(t("🦞 랍스타 컨트롤 센터 (아포칼립스 군단)", "🦞 Lobster Chat Center (Apocalypse Legion)"))
 
 # ==========================================
-# 3. 사이드바 (요원 채용 및 노션 DB 선택 UI)
+# 3. 사이드바 (인력소 - Gemini 실무 퇴출)
 # ==========================================
 with st.sidebar:
     st.divider()
-    st.header(t("📝 서기 설정", "📝 Secretary Settings"))
-    secretary_model = st.selectbox(t("최종 보고서 작성 모델 (Gemini)", "Final Report Model (Gemini)"), gemini_models)
+    st.header(t("📝 수석 서기 설정 (Gemini)", "📝 Chief Secretary (Gemini)"))
+    # 제미나이는 오직 최종 보고서 작성용으로만 UI에 남습니다.
+    secretary_model = st.selectbox(t("최종 보고서 전담 모델", "Final Report Model"), gemini_models)
     
     st.divider()
     st.header(t("🦞 군단 인력소", "🦞 Agent Recruitment"))
@@ -87,8 +82,8 @@ with st.sidebar:
     with st.expander(t("➕ 새 에이전트 채용 (무기 지급)", "➕ Hire New Agent (Assign Tools)")):
         new_name = st.text_input(t("이름", "Name (e.g., Jacob)"))
         new_role = st.text_input(t("직무", "Role (e.g., Project Manager)"))
-        sel_groq = st.selectbox(t("🧠 사고력 뇌 (Groq)", "🧠 Brain (Groq)"), groq_models)
-        sel_gemini = st.selectbox(t("👐 실무용 손발 (Gemini)", "👐 Hands (Gemini)"), gemini_models)
+        sel_groq = st.selectbox(t("🧠 사고력 및 실무 뇌 (Groq)", "🧠 Brain & Hands (Groq)"), groq_models)
+        # 📌 실무용 제미나이 손발 선택 메뉴 삭제!
         selected_tools = st.multiselect(t("🛠️ 툴 장착", "🛠️ Assign Tools"), AVAILABLE_TOOLS)
         
         selected_notion_db_id = None
@@ -98,13 +93,12 @@ with st.sidebar:
                 selected_db_name = st.selectbox(t("📂 담당할 노션 DB 선택", "📂 Select Notion DB"), list(notion_dbs.keys()))
                 selected_notion_db_id = notion_dbs[selected_db_name]
             else:
-                st.warning(t("⚠️ 봇이 초대된 노션 DB가 없습니다. 먼저 노션 페이지 연결 메뉴에서 봇을 초대하세요.", "⚠️ No Notion DB found. Invite the bot in Notion first."))
+                st.warning(t("⚠️ 노션 연결 안됨.", "⚠️ Notion not connected."))
         
         if st.button(t("채용 및 명부 등록 🚀", "Hire & Save 🚀")):
             if new_name and new_role:
-                new_agent = LobsterAgent(secrets["GROQ"], secrets["GEMINI"], new_name, new_role)
+                new_agent = LobsterAgent(secrets["GROQ"], new_name, new_role)
                 new_agent.model_groq = sel_groq
-                new_agent.model_gemini = sel_gemini
                 new_agent.tools = selected_tools
                 new_agent.notion_db_id = selected_notion_db_id
                 
@@ -125,7 +119,7 @@ with tab1:
     contact_col, chat_col = st.columns([1, 3])
     with contact_col:
         st.subheader(t("👥 내 요원 목록", "👥 My Agents"))
-        selected_agent_key = st.radio(t("업무를 지시할 요원 선택", "Select agent to assign task"), list(st.session_state.agent_roster.keys()), label_visibility="collapsed")
+        selected_agent_key = st.radio(t("업무 지시 요원 선택", "Select agent"), list(st.session_state.agent_roster.keys()), label_visibility="collapsed")
         active_lobster = st.session_state.agent_roster[selected_agent_key]
         
         st.divider()
@@ -143,9 +137,9 @@ with tab1:
         st.subheader(f"💬 {active_lobster.name} {t('요원과의 1:1 DM', 'Direct Message')}")
         chat_memory_key = f"dm_history_{selected_agent_key}"
         if chat_memory_key not in st.session_state:
-            st.session_state[chat_memory_key] = [{"role": "assistant", "content": t(f"충성! 사령관님. {active_lobster.role} 담당 {active_lobster.name} 대기 중입니다. 지시를 내려주십시오! 🫡", f"Yes, Commander! {active_lobster.name} ({active_lobster.role}) awaiting orders! 🫡")}]
+            st.session_state[chat_memory_key] = [{"role": "assistant", "content": t(f"충성! 사령관님. 대기 중입니다! 🫡", f"Yes, Commander! Awaiting orders! 🫡")}]
 
-        uploaded_file = st.file_uploader(t(f"📁 분석할 데이터 전달", f"📁 Upload File for {active_lobster.name}"), type=['txt', 'csv', 'md'], key=f"file_{selected_agent_key}")
+        uploaded_file = st.file_uploader(t(f"📁 분석 데이터 전달", f"📁 Upload File"), type=['txt', 'csv', 'md'], key=f"file_{selected_agent_key}")
         file_data = uploaded_file.getvalue().decode("utf-8") if uploaded_file else ""
 
         for msg in st.session_state[chat_memory_key]:
@@ -162,9 +156,10 @@ with tab1:
                     history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state[chat_memory_key][-10:]]
                     system_injection = f"\n[Tools: {tools_str}]\n[Rule] All your responses must be strictly in '{app_lang}'."
                     try:
-                        action_type, text1, text2 = active_lobster.think_and_act(full_prompt + system_injection, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini)
+                        # 📌 함수 호출에서 gemini 파라미터 완전 삭제
+                        action_type, text1, text2 = active_lobster.think_and_act(full_prompt + system_injection, history_for_agent)
                         st.markdown(text1)
-                        if action_type == "task": st.success(t("✅ 실무 작업 완료 (API 연동)!", "✅ Task Executed (API Used)!"))
+                        if action_type == "task": st.success(t("✅ 실무 작업 완료!", "✅ Task Executed!"))
                         final_memory = text1
                     except Exception as e:
                         final_memory = f"Error: {e}"
@@ -172,7 +167,7 @@ with tab1:
 
 with tab2:
     st.subheader(t("토론 참석자 세팅", "Select Attendees"))
-    attendees_keys = st.multiselect(t("회의에 참석할 에이전트들을 호출하세요", "Call agents to the meeting"), list(st.session_state.agent_roster.keys()), key="meeting_attendees_widget", label_visibility="collapsed")
+    attendees_keys = st.multiselect(t("회의 참석 에이전트 호출", "Call agents"), list(st.session_state.agent_roster.keys()), key="meeting_attendees_widget", label_visibility="collapsed")
     st.divider()
 
     if "is_debating" not in st.session_state: st.session_state.is_debating = False
@@ -182,8 +177,8 @@ with tab2:
         if not st.session_state.is_debating:
             agenda_input = st.text_input(t("회의 안건 던지기...", "Agenda..."), key="agenda_input")
             if st.button(t("🔥 아포칼립스 끝장 토론 시작!", "🔥 Start Apocalypse Debate!"), use_container_width=True):
-                if len(attendees_keys) < 2: st.warning(t("참석자가 최소 2명은 있어야 합니다!", "Need at least 2 attendees!"))
-                elif not agenda_input: st.warning(t("안건을 입력해주세요!", "Please enter an agenda!"))
+                if len(attendees_keys) < 2: st.warning(t("최소 2명 필요!", "Need 2+ attendees!"))
+                elif not agenda_input: st.warning(t("안건을 입력해주세요!", "Please enter agenda!"))
                 else:
                     st.session_state.is_debating = True
                     st.session_state.meeting_agenda = agenda_input
@@ -192,8 +187,8 @@ with tab2:
                     st.session_state.compressed_memory = "" 
                     st.session_state.short_term_memory = [] 
                     
-                    apoc_kr = f"웡빈 사령관의 안건: '{agenda_input}'\n[규칙]\n1. 무조건 '{app_lang}'로만 말해라.\n2. 5문장 이내로 핵심만 찔러라.\n3. 앞사람 의견을 비판하고 극단적 아이디어를 내라.\n4. 완벽한 계획이 섰을 때만 마지막에 [결론]을 적어라.\n5. [TASK] 태그 사용 금지."
-                    apoc_en = f"Commander Wongbin's Agenda: '{agenda_input}'\n[Rules]\n1. Speak ONLY in '{app_lang}'.\n2. Keep it under 5 sentences. Get straight to the point.\n3. Criticize the previous speaker and provide extreme ideas.\n4. Append [결론] at the very end ONLY when a perfect master plan is reached.\n5. NEVER use the [TASK] tag."
+                    apoc_kr = f"사령관 안건: '{agenda_input}'\n1. 무조건 '{app_lang}'로만 말해라.\n2. 5문장 이내 핵심만.\n3. 비판하고 극단적 아이디어 도출.\n4. 완벽한 합의 시에만 [결론] 추가.\n5. [TASK] 태그 금지."
+                    apoc_en = f"Agenda: '{agenda_input}'\n1. Speak ONLY in '{app_lang}'.\n2. Max 5 sentences.\n3. Criticize & be extreme.\n4. Append [결론] ONLY when agreed.\n5. NO [TASK] tag."
                     
                     st.session_state.meeting_history_ui = [{"role": "user", "content": t(apoc_kr, apoc_en)}]
                     st.session_state.full_meeting_log = f"**[Agenda]** {agenda_input}\n\n"
@@ -220,7 +215,7 @@ with tab2:
         if st.session_state.turn_index > 0:
             timer_ph = st.empty()
             for sec in range(20, 0, -1):
-                timer_ph.info(t(f"⏳ 과열 방지 중... {current_agent.name} 발언까지 **{sec}초** 대기", f"⏳ Cooling down... {current_agent.name} speaks in **{sec}s**"))
+                timer_ph.info(t(f"⏳ 과열 방지 중... {current_agent.name} 발언까지 **{sec}초** 대기", f"⏳ Cooling down... {sec}s"))
                 time.sleep(1)
             timer_ph.empty()
 
@@ -230,11 +225,12 @@ with tab2:
                 old2 = st.session_state.short_term_memory.pop(0)
                 with st.spinner(t("🧠 과거 기억 압축 중...", "🧠 Compressing memories...")):
                     try:
-                        genai.configure(api_key=secrets["GEMINI"])
-                        model = genai.GenerativeModel(current_agent.model_gemini)
-                        st.session_state.compressed_memory = model.generate_content(
-                            f"Summarize this in '{app_lang}' into 3 sentences. Previous: {st.session_state.compressed_memory}. New: {old1['content']} \n {old2['content']}"
-                        ).text
+                        # 📌 단기 기억 압축도 제미나이 대신 Groq의 빠르고 가벼운 모델이 담당합니다! (할당량 보호)
+                        sum_res = current_agent.groq_client.chat.completions.create(
+                            messages=[{"role": "user", "content": f"Summarize this in '{app_lang}' into 3 sentences. Previous: {st.session_state.compressed_memory}. New: {old1['content']} \n {old2['content']}"}],
+                            model="llama3-8b-8192", temperature=0.2
+                        )
+                        st.session_state.compressed_memory = sum_res.choices[0].message.content
                     except: pass
 
             groq_context = [{"role": "user", "content": st.session_state.meeting_history_ui[0]["content"]}]
@@ -244,9 +240,10 @@ with tab2:
 
             with st.spinner(t(f"🎤 {current_agent.name} 발언 준비 중...", f"🎤 {current_agent.name} is thinking...")):
                 try:
+                    # 📌 파라미터 삭제 반영
                     action, reply, _ = current_agent.think_and_act(
                         t(f"너의 차례다. '{app_lang}'로 5문장 이내로 말해. 결론이 났다면 [결론]을 적어.", f"Your turn. Speak in '{app_lang}' under 5 sentences. If concluded, append [결론]."),
-                        groq_context, current_agent.model_groq, current_agent.model_gemini
+                        groq_context
                     )
                     
                     if "[결론]" in reply and st.session_state.turn_index < len(attendees) * 2:
@@ -263,35 +260,26 @@ with tab2:
                         st.session_state.is_debating = False
                         st.success(t("✅ 합의 도달! 최종 보고서를 작성합니다...", "✅ Agreement Reached! Generating Final Report..."))
                         
-                        with st.spinner(t("서기(Gemini)가 직무 맞춤형 액션 아이템을 정리 중입니다... 📝", "Gemini is finalizing Role-based Action Items... 📝")):
+                        # 📌 👑 여기서만 유일하게 제미나이(수석 서기)가 등판합니다! (1회 호출이므로 할당량 안심)
+                        with st.spinner(t("수석 서기(Gemini)가 직무 맞춤형 액션 아이템을 정리 중입니다... 📝", "Chief Secretary (Gemini) is finalizing... 📝")):
                             try:
                                 genai.configure(api_key=secrets["GEMINI"])
                                 summary_model = genai.GenerativeModel(secretary_model)
-                                
-                                # 📌 핵심 수정: 참석자들의 "이름"과 "직무(Role)" 정보를 문자열로 예쁘게 조립합니다.
                                 attendees_info_list = [f"- {st.session_state.agent_roster[k].name} (직무/Role: {st.session_state.agent_roster[k].role})" for k in attendees]
                                 attendees_info_str = "\n".join(attendees_info_list)
                                 
-                                # 📌 빡센 룰 추가: "직무에 안 맞는 일 시키면 가만 안 둔다!"
                                 report_prompt = f"""
                                 다음은 방금 완료된 회의의 전체 기록이다. 모든 내용을 반드시 '{app_lang}'로 작성해라.
-                                
                                 [안건 / Agenda]: {st.session_state.meeting_agenda}
-                                [참여 요원 및 직무 / Attendees & Roles]: 
-                                {attendees_info_str}
-                                
-                                [전체 회의록 / Full Meeting Log]: 
-                                {st.session_state.full_meeting_log}
+                                [참여 요원 및 직무 / Attendees & Roles]: \n{attendees_info_str}
+                                [전체 회의록 / Full Meeting Log]: \n{st.session_state.full_meeting_log}
                                 
                                 다음 양식에 맞춰 완벽한 마크다운 형식의 최종 회의 결과 보고서를 작성해라:
                                 1. 📌 미팅 요약 (Meeting Summary)
                                 2. 💡 중요 내용 (Key Takeaways)
-                                3. 📅 액션 아이템 (Action Items)
-                                   - **[절대 규칙]**: 반드시 위 '[참여 요원 및 직무]'를 확인하고, 각 요원의 '직무(Role)'에 완벽하게 일치하는 업무만 배정할 것! (예: 데이터 분석가에게는 데이터 추출, 기획자에게는 기획서 작성 등)
+                                3. 📅 액션 아이템 (Action Items - 직무에 완벽하게 일치하는 업무만 배정할 것!)
                                 4. 🎯 기대 효과 (Expected Results)
-                                5. 🤖 각 에이전트별 개인 업무 AI 프롬프트 (Individual AI Prompts)
-                                   - 이 프롬프트 역시 각 요원의 '직무'에 완벽하게 부합하는 전문적인 작업 지시여야 함.
-                                   - 1:1 대화방에서 바로 복사해서 붙여넣을 수 있는 형태(1인칭 명령조)로 작성할 것.
+                                5. 🤖 각 에이전트별 개인 업무 AI 프롬프트 (Individual AI Prompts - 1:1 대화방 복붙용 1인칭 명령조)
                                 """
                                 final_report = summary_model.generate_content(report_prompt).text
                                 st.session_state.final_report = final_report
@@ -309,6 +297,6 @@ with tab2:
 
     if not st.session_state.is_debating and "final_report" in st.session_state:
         st.divider()
-        st.subheader(t("📜 제미나이 서기의 최종 회의 보고서", "📜 Final Meeting Report by Gemini"))
+        st.subheader(t("📜 수석 서기(Gemini)의 최종 회의 보고서", "📜 Final Meeting Report by Chief Secretary (Gemini)"))
         with st.container(border=True):
             st.markdown(st.session_state.final_report)
