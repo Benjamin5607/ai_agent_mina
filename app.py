@@ -14,11 +14,8 @@ st.set_page_config(page_title="Lobster Chat Center", page_icon="🦞", layout="w
 # ==========================================
 secrets = get_secrets()
 
-# 📌 2026년 기준 실시간 모델 리스트를 먼저 가져옵니다!
 groq_models = get_groq_models(secrets["GROQ"])
 gemini_models = get_gemini_models(secrets["GEMINI"])
-
-# 리스트에서 첫 번째 모델을 기본값으로 안전하게 세팅
 default_groq = groq_models[0] if groq_models else "llama3-8b-8192"
 default_gemini = gemini_models[0] if gemini_models else "gemini-pro"
 
@@ -40,7 +37,6 @@ def load_roster():
                     groq_key=secrets["GROQ"], gemini_key=secrets["GEMINI"], 
                     name=info["name"], role=info["role"]
                 )
-                # 📌 하드코딩 제거!
                 agent.model_groq = info.get("model_groq", default_groq)
                 agent.model_gemini = info.get("model_gemini", default_gemini)
                 agent.tools = info.get("tools", [])
@@ -88,8 +84,6 @@ st.title(t("🦞 랍스타 컨트롤 센터 (아포칼립스 군단)", "🦞 Lob
 # ==========================================
 with st.sidebar:
     st.divider()
-    
-    # 📌 신규 기능: 회의록을 작성할 '메인 서기 모델' 선택 (실시간 리스트 연동)
     st.header(t("📝 서기 설정", "📝 Secretary Settings"))
     secretary_model = st.selectbox(t("최종 보고서 작성 모델 (Gemini)", "Final Report Model (Gemini)"), gemini_models)
     
@@ -118,58 +112,85 @@ with st.sidebar:
 # ==========================================
 # 4. 메인 화면: 탭 분리
 # ==========================================
-tab1_name = t("🗣️ 1:1 전담 마크", "🗣️ 1:1 Direct Chat")
+tab1_name = t("💬 1:1 개인 업무 지시 (DM)", "💬 1:1 Direct Messages (DM)")
 tab2_name = t("🔥 원탁 회의실 (끝장 토론)", "🔥 War Room (Endless Debate)")
 tab1, tab2 = st.tabs([tab1_name, tab2_name])
 
 # ------------------------------------------
-# [탭 1] 1:1 채팅 UI
+# [탭 1] 1:1 개인 업무 지시 (DM 방 독립 시스템)
 # ------------------------------------------
 with tab1:
-    colA, colB = st.columns([4, 1])
-    with colA:
-        selected_agent_key = st.selectbox(t("누구에게 지시할까요?", "Select Agent"), list(st.session_state.agent_roster.keys()), key="1on1_select")
+    # 📌 UI 구조 개선: 왼쪽은 연락처(에이전트 목록), 오른쪽은 채팅창
+    contact_col, chat_col = st.columns([1, 3])
+    
+    with contact_col:
+        st.subheader(t("👥 내 요원 목록", "👥 My Agents"))
+        # 라디오 버튼을 사용해 슬랙의 채널 목록처럼 클릭하기 쉽게 만듭니다.
+        selected_agent_key = st.radio(
+            t("업무를 지시할 요원 선택", "Select agent to assign task"), 
+            list(st.session_state.agent_roster.keys()),
+            label_visibility="collapsed"
+        )
+        
         active_lobster = st.session_state.agent_roster[selected_agent_key]
-    with colB:
-        st.write("") 
+        
+        st.divider()
+        st.caption(t(f"🧠 장착 뇌:\n`{active_lobster.model_groq}`", f"🧠 Brain:\n`{active_lobster.model_groq}`"))
+        tools_str = ", ".join(active_lobster.tools) if hasattr(active_lobster, 'tools') and active_lobster.tools else t("맨손 (툴 없음)", "No Tools")
+        st.caption(t(f"🛠️ 장착 툴:\n{tools_str}", f"🛠️ Tools:\n{tools_str}"))
+        
         if len(st.session_state.agent_roster) > 1:
-            if st.button(t("🗑️ 해고하기", "🗑️ Fire Agent"), use_container_width=True):
+            if st.button(t("🗑️ 요원 해고", "🗑️ Fire Agent"), use_container_width=True):
                 del st.session_state.agent_roster[selected_agent_key]
                 save_roster(st.session_state.agent_roster)
                 st.rerun()
 
-    tools_str = ", ".join(active_lobster.tools) if hasattr(active_lobster, 'tools') and active_lobster.tools else t("맨손 (툴 없음)", "No Tools")
-    
-    uploaded_file = st.file_uploader(t(f"📁 데이터 전달", f"📁 Upload File for {active_lobster.name}"), type=['txt', 'csv', 'md'], key="1on1_file")
-    file_data = uploaded_file.getvalue().decode("utf-8") if uploaded_file else ""
+    with chat_col:
+        st.subheader(f"💬 {active_lobster.name} {t('요원과의 1:1 DM', 'Direct Message')}")
+        
+        # 📌 핵심: 선택된 에이전트 고유의 채팅 메모리 키 생성 (독립된 방)
+        chat_memory_key = f"dm_history_{selected_agent_key}"
+        
+        # 이 에이전트와의 첫 대화라면 방을 새로 파줍니다.
+        if chat_memory_key not in st.session_state:
+            st.session_state[chat_memory_key] = [
+                {"role": "assistant", "content": t(f"충성! 사령관님. {active_lobster.role} 담당 {active_lobster.name} 대기 중입니다. 지시를 내려주십시오! 🫡", f"Yes, Commander! {active_lobster.name} ({active_lobster.role}) awaiting orders! 🫡")}
+            ]
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": t("명령을 내려주세요! 🦞", "Awaiting your command! 🦞")}]
+        uploaded_file = st.file_uploader(t(f"📁 분석할 데이터 전달", f"📁 Upload File for {active_lobster.name}"), type=['txt', 'csv', 'md'], key=f"file_{selected_agent_key}")
+        file_data = uploaded_file.getvalue().decode("utf-8") if uploaded_file else ""
 
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        # 📌 이 에이전트만의 고유 채팅 기록을 렌더링
+        for msg in st.session_state[chat_memory_key]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
 
-    if prompt := st.chat_input(t(f"[{active_lobster.name}]에게 지시하기...", f"Command [{active_lobster.name}]..."), key="chat_1on1"):
-        full_prompt = prompt if not file_data else f"{prompt}\n\n[Data:\n{file_data}\n]"
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        if prompt := st.chat_input(t(f"[{active_lobster.name}]에게 지시하기...", f"Command [{active_lobster.name}]..."), key=f"input_{selected_agent_key}"):
+            full_prompt = prompt if not file_data else f"{prompt}\n\n[Data:\n{file_data}\n]"
+            
+            # 📌 대화를 공용 메모리가 아닌 '이 에이전트 전용 메모리'에 저장
+            st.session_state[chat_memory_key].append({"role": "user", "content": prompt})
+            with st.chat_message("user"): st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            with st.spinner(t("뇌를 굴리는 중... 🧠", "Thinking... 🧠")):
-                history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages[-10:]]
-                system_injection = f"\n[Tools: {tools_str}]\n[Rule] All your responses must be strictly in '{app_lang}'."
-                try:
-                    action_type, text1, text2 = active_lobster.think_and_act(full_prompt + system_injection, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini)
-                    st.markdown(text1)
-                    if action_type == "task": st.success(t("✅ 실무 작업 완료!", "✅ Task Executed!"))
-                    final_memory = text1
-                except Exception as e:
-                    final_memory = f"Error: {e}"
-            st.session_state.messages.append({"role": "assistant", "content": final_memory})
+            with st.chat_message("assistant"):
+                with st.spinner(t("뇌와 무기를 굴리는 중... 🧠🛠️", "Thinking & Executing... 🧠🛠️")):
+                    # 이 에이전트의 최근 10개 대화만 맥락으로 가져옴
+                    history_for_agent = [{"role": m["role"], "content": m["content"]} for m in st.session_state[chat_memory_key][-10:]]
+                    system_injection = f"\n[Tools: {tools_str}]\n[Rule] All your responses must be strictly in '{app_lang}'."
+                    
+                    try:
+                        action_type, text1, text2 = active_lobster.think_and_act(full_prompt + system_injection, history_for_agent, active_lobster.model_groq, active_lobster.model_gemini)
+                        st.markdown(text1)
+                        if action_type == "task": st.success(t("✅ 실무 작업 완료 (API 연동)!", "✅ Task Executed (API Used)!"))
+                        final_memory = text1
+                    except Exception as e:
+                        final_memory = f"Error: {e}"
+                
+                # 결과도 이 에이전트 전용 메모리에 저장
+                st.session_state[chat_memory_key].append({"role": "assistant", "content": final_memory})
 
 # ------------------------------------------
-# [탭 2] 🔥 원탁 회의실
+# [탭 2] 🔥 원탁 회의실 (이하 기존 코드와 완벽 동일!)
 # ------------------------------------------
 with tab2:
     st.subheader(t("토론 참석자 세팅", "Select Attendees"))
@@ -264,11 +285,10 @@ with tab2:
                         st.session_state.is_debating = False
                         st.success(t("✅ 합의 도달! 최종 보고서를 작성합니다...", "✅ Agreement Reached! Generating Final Report..."))
                         
-                        # 📌 사용자가 사이드바에서 고른 '최종 요약 전용 서기 모델' 출격!
                         with st.spinner(t("서기(Gemini)가 액션 아이템을 정리 중입니다... 📝", "Gemini is finalizing Action Items... 📝")):
                             try:
                                 genai.configure(api_key=secrets["GEMINI"])
-                                summary_model = genai.GenerativeModel(secretary_model) # 하드코딩 완전 철폐!
+                                summary_model = genai.GenerativeModel(secretary_model)
                                 
                                 report_prompt = f"""
                                 다음은 방금 완료된 회의의 전체 기록이다. 모든 내용을 반드시 '{app_lang}'로 작성해라.
@@ -285,12 +305,10 @@ with tab2:
                                    - 에이전트가 어떤 툴(Notion API 등)을 사용해야 하는지 프롬프트 안에 명시해라.
                                 """
                                 final_report = summary_model.generate_content(report_prompt).text
-                                
                                 st.session_state.final_report = final_report
                                 report_to_discord(secrets["DISCORD"], "📜 최종 회의 보고서", final_report[:4000], 15158332)
                             except Exception as e:
                                 st.session_state.final_report = f"요약 생성 중 에러 발생: {e}"
-                        
                         st.rerun()
                     else:
                         st.session_state.turn_index += 1
